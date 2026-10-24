@@ -29,7 +29,7 @@ struct StyleCard: View {
                 .overlay(alignment: .bottomTrailing) { badge.padding(10) }
 
             Text(style.name)
-                .font(.system(size: 21, weight: .semibold))
+                .font(.system(size: 21, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -37,9 +37,9 @@ struct StyleCard: View {
             HStack(spacing: 5) {
                 Text(style.recipe != nil ? "Blend" : "Long Press")
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
             }
-            .font(.system(size: 15))
+            .font(.system(size: 15, design: .rounded))
             .foregroundStyle(Theme.secondaryText)
             .padding(.top, 4)
         }

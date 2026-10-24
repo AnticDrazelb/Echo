@@ -1,4 +1,4 @@
-"""Generates the Echo app icon and the bundled sample scene."""
+"""Generates the bundled sample scene (the app icon lives in make_icon.py)."""
 import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -9,56 +9,6 @@ S = 1024
 
 def lerp(a, b, t):
     return a + (b - a) * t
-
-
-def icon():
-    size = S * 2  # supersample
-    bg = np.zeros((size, size, 3), np.float32)
-    yy, xx = np.mgrid[0:size, 0:size] / size
-    # Deep near-black with a faint cool lift at the top.
-    bg[..., 0] = 0.020 + 0.015 * (1 - yy)
-    bg[..., 1] = 0.020 + 0.015 * (1 - yy)
-    bg[..., 2] = 0.030 + 0.030 * (1 - yy)
-
-    # Wave ribbon: many thin sinusoids, blue -> violet, fanning out.
-    ribbon = Image.new("RGB", (size, size), (0, 0, 0))
-    d = ImageDraw.Draw(ribbon)
-    x0, x1 = int(size * 0.52), int(size * 0.98)
-    for k in range(26):
-        f = k / 25
-        pts = []
-        for x in range(x0, x1, 4):
-            t = (x - x0) / (x1 - x0)
-            amp = size * (0.05 + 0.06 * t) * (0.6 + 0.8 * f)
-            phase = 0.6 * f
-            y = size * 0.62 - amp * np.sin(t * np.pi * 1.6 + phase) - t * size * 0.06 + (f - 0.5) * size * 0.05 * t
-            pts.append((x, y))
-        for i in range(len(pts) - 1):
-            t = i / len(pts)
-            c = (int(lerp(40, 170, t)), int(lerp(110, 80, t)), 255)
-            fade = min(1.0, t * 6) * (1 - 0.6 * t)
-            c = tuple(int(v * fade * (0.35 + 0.65 * (1 - abs(f - 0.5) * 1.4))) for v in c)
-            d.line([pts[i], pts[i + 1]], fill=c, width=5)
-    glow = ribbon.filter(ImageFilter.GaussianBlur(28))
-    r = np.asarray(ribbon, np.float32) / 255
-    g = np.asarray(glow, np.float32) / 255
-    out = bg + r * 0.9 + g * 1.6
-
-    # The "e" glyph.
-    font = ImageFont.truetype("/usr/share/fonts/opentype/inter/InterDisplay-SemiBold.otf", int(size * 0.70))
-    mask = Image.new("L", (size, size), 0)
-    md = ImageDraw.Draw(mask)
-    bbox = md.textbbox((0, 0), "e", font=font)
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    md.text(((size * 0.40 - w / 2) - bbox[0], (size * 0.53 - h / 2) - bbox[1]), "e", font=font, fill=255)
-    m = np.asarray(mask, np.float32)[..., None] / 255
-    soft = np.asarray(mask.filter(ImageFilter.GaussianBlur(40)), np.float32)[..., None] / 255
-    out = out + soft * np.array([0.10, 0.12, 0.22]) * 0.8
-    glyph = np.ones_like(out) * np.array([0.97, 0.97, 1.0])
-    out = out * (1 - m) + glyph * m
-
-    img = Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8)).resize((S, S), Image.LANCZOS)
-    img.save(f"{OUT}/AppIcon.png")
 
 
 def scene():
@@ -133,5 +83,4 @@ def scene():
     out.save(f"{OUT}/SampleScene.jpg", quality=88)
 
 
-icon()
 scene()

@@ -20,14 +20,14 @@ struct NameStyleSheet: View {
                     HStack(spacing: 12) {
                         thumb(pending.reference, label: "Reference")
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(Theme.secondaryText)
                         thumb(preview, label: "Applied")
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Style name", text: $name)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .focused($nameFocused)
                             .submitLabel(.done)
                             .padding(.horizontal, 16)
@@ -42,7 +42,7 @@ struct NameStyleSheet: View {
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Style DNA").font(.system(size: 17, weight: .semibold))
+                        Text("Style DNA").font(.system(size: 17, weight: .semibold, design: .rounded))
                         DNAView(dna: pending.dna)
                     }
                     .padding(16)
@@ -92,7 +92,7 @@ struct NameStyleSheet: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.secondaryText)
         }
     }
@@ -120,10 +120,10 @@ struct ImportStyleSheet: View {
             .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
 
             VStack(spacing: 6) {
-                Text(shared.name).font(.system(size: 26, weight: .bold))
+                Text(shared.name).font(.system(size: 26, weight: .bold, design: .rounded))
                 if let creator = shared.creator, !creator.isEmpty {
                     Text("by \(creator.hasPrefix("@") ? creator : "@" + creator)")
-                        .font(.system(size: 15))
+                        .font(.system(size: 15, design: .rounded))
                         .foregroundStyle(Theme.secondaryText)
                 }
             }
@@ -169,14 +169,14 @@ struct StyleDetailSheet: View {
                     }
                     if let recipe = style.recipe {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Blend recipe").font(.system(size: 15, weight: .semibold))
+                            Text("Blend recipe").font(.system(size: 15, weight: .semibold, design: .rounded))
                             ForEach(recipe, id: \.self) { part in
                                 HStack {
                                     Text(part.name)
                                     Spacer()
                                     Text("\(Int(part.weight * 100))%").monospacedDigit().foregroundStyle(Theme.secondaryText)
                                 }
-                                .font(.system(size: 15))
+                                .font(.system(size: 15, design: .rounded))
                             }
                         }
                         .padding(16)
@@ -187,7 +187,7 @@ struct StyleDetailSheet: View {
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     if let credit = style.creditLine {
                         Label(credit, systemImage: "person.crop.circle")
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, design: .rounded))
                             .foregroundStyle(Theme.secondaryText)
                     }
                 }

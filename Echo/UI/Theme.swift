@@ -1,17 +1,21 @@
 import SwiftUI
 
 enum Theme {
-    static let background = Color(red: 0.035, green: 0.035, blue: 0.043)
-    static let surface = Color(red: 0.105, green: 0.105, blue: 0.118)
-    static let surfaceRaised = Color(red: 0.16, green: 0.16, blue: 0.176)
+    /// Pure black for OLED.
+    static let background = Color.black
+    static let surface = Color(red: 0.11, green: 0.11, blue: 0.118)       // #1C1C1E
+    static let surfaceRaised = Color(red: 0.173, green: 0.173, blue: 0.18) // #2C2C2E
     static let stroke = Color.white.opacity(0.07)
-    static let accent = Color(red: 0.04, green: 0.48, blue: 1.0)
-    static let accentDeep = Color(red: 0.02, green: 0.36, blue: 0.82)
-    static let violet = Color(red: 0.66, green: 0.36, blue: 1.0)
+    /// Echo Blue #007AFF
+    static let accent = Color(red: 0, green: 0.478, blue: 1.0)
+    static let accentDeep = Color(red: 0, green: 0.38, blue: 0.82)
+    /// Echo Violet #AF52DE
+    static let violet = Color(red: 0.686, green: 0.322, blue: 0.871)
+    static let offWhite = Color(red: 0.949, green: 0.949, blue: 0.969)    // #F2F2F7
     static let secondaryText = Color.white.opacity(0.55)
 
     static let waveGradient = LinearGradient(
-        colors: [Color(red: 0.12, green: 0.42, blue: 1.0), Color(red: 0.45, green: 0.32, blue: 1.0), violet],
+        colors: [accent, Color(red: 0.38, green: 0.4, blue: 0.95), violet],
         startPoint: .leading, endPoint: .trailing
     )
 }
@@ -22,7 +26,7 @@ struct PrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .semibold))
+            .font(.system(size: 17, weight: .semibold, design: .rounded))
             .foregroundStyle(.white)
             .padding(.horizontal, 22)
             .frame(height: 52)
@@ -36,7 +40,7 @@ struct PrimaryButtonStyle: ButtonStyle {
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .medium))
+            .font(.system(size: 17, weight: .medium, design: .rounded))
             .foregroundStyle(.white.opacity(0.75))
             .padding(.horizontal, 22)
             .frame(height: 52)
@@ -71,10 +75,10 @@ struct Chip: View {
                 if isLoading {
                     ProgressView().controlSize(.mini).tint(.white)
                 } else if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+                    Image(systemName: systemImage).font(.system(size: 15, weight: .semibold, design: .rounded))
                 }
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -103,12 +107,11 @@ struct Toast: View {
 
     var body: some View {
         Label(text, systemImage: systemImage)
-            .font(.system(size: 15, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
             .foregroundStyle(.white)
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.1)))
+            .echoGlass(Capsule())
             .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
     }
 }
@@ -127,5 +130,23 @@ extension View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: text.wrappedValue)
+    }
+}
+
+extension View {
+    /// iOS 26 Liquid Glass, falling back to system blur material.
+    @ViewBuilder
+    func echoGlass<S: Shape>(_ shape: S, interactive: Bool = false) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+                .overlay(shape.stroke(Color.white.opacity(0.1), lineWidth: 1))
+        }
+        #else
+        background(.ultraThinMaterial, in: shape)
+            .overlay(shape.stroke(Color.white.opacity(0.1), lineWidth: 1))
+        #endif
     }
 }

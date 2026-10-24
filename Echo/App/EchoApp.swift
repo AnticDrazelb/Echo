@@ -10,6 +10,7 @@ struct EchoApp: App {
                 .environment(app)
                 .environment(app.library)
                 .preferredColorScheme(.dark)
+                .fontDesign(.rounded)
                 .tint(Theme.accent)
                 .onOpenURL { app.handle(url: $0) }
         }

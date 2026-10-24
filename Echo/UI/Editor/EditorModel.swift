@@ -16,6 +16,12 @@ final class EditorModel {
     var settings = RenderSettings() { didSet { refresh() } }
     var region: StyleRegion = .auto { didSet { refresh() } }
     var split: CGFloat = 0.5 { didSet { refresh() } }
+    /// Optional second look mixed into the current one.
+    var blendStyle: Style? { didSet { scheduleRebuild() } }
+    var blendAmount: Float = 0.3 { didSet { scheduleRebuild() } }
+    var saveState: SaveState = .idle
+
+    enum SaveState: Equatable { case idle, saving, saved }
 
     private(set) var aspectRatio: CGFloat = 3 / 4
     private(set) var isReady = false
@@ -32,6 +38,7 @@ final class EditorModel {
     @ObservationIgnored private var sourceStats: StyleDNA?
     @ObservationIgnored private var renderer: StyleRenderer?
     @ObservationIgnored private var masks: RegionMasker.Masks?
+    @ObservationIgnored private var rebuildTask: Task<Void, Never>?
 
     // Video
     @ObservationIgnored private(set) var player: AVPlayer?
@@ -71,6 +78,7 @@ final class EditorModel {
             isReady = true
             refresh()
             loadMasks(for: prepared.0)
+            library.usePreviewSubject(prepared.0)
 
         case .video(let url):
             let frames = await MediaLoader.frames(of: url, count: 4)
@@ -89,9 +97,43 @@ final class EditorModel {
         }
     }
 
+    /// The look actually applied: the style, or the style blended with another.
+    var effectiveDNA: StyleDNA {
+        guard let blendStyle else { return style.dna }
+        return StyleDNA.blend([(style.dna, 1 - blendAmount), (blendStyle.dna, blendAmount)])
+    }
+
+    /// What sharing and LUT export operate on.
+    var exportStyle: Style {
+        guard let blendStyle else { return style }
+        var s = Style(name: "\(style.name) × \(blendStyle.name)", dna: effectiveDNA, creator: style.creator)
+        s.recipe = [
+            Style.Ingredient(name: style.name, weight: 1 - blendAmount),
+            Style.Ingredient(name: blendStyle.name, weight: blendAmount),
+        ]
+        return s
+    }
+
+    func saveBlendAsStyle() -> Style {
+        var s = exportStyle
+        s.name = library.uniqueName(s.name)
+        library.add(s)
+        return s
+    }
+
+    private func scheduleRebuild() {
+        rebuildTask?.cancel()
+        rebuildTask = Task {
+            try? await Task.sleep(nanoseconds: 50_000_000) // coalesce slider ticks
+            if Task.isCancelled { return }
+            await rebuildRenderer()
+            if !Task.isCancelled { refresh() }
+        }
+    }
+
     private func rebuildRenderer() async {
         guard let stats = sourceStats else { return }
-        let r = StyleRenderer(reference: style.dna, source: stats)
+        let r = StyleRenderer(reference: effectiveDNA, source: stats)
         await Task.detached(priority: .userInitiated) { r.warmUp() }.value
         renderer = r
     }
@@ -119,6 +161,7 @@ final class EditorModel {
     func switchStyle(to newStyle: Style) {
         guard newStyle.id != style.id else { return }
         style = newStyle
+        if blendStyle?.id == newStyle.id { blendStyle = nil }
         creditEnabled = newStyle.creator != nil
         creditHandle = newStyle.creator ?? ""
         Task {
@@ -226,6 +269,23 @@ final class EditorModel {
 
     // MARK: Export
 
+    /// One-tap export straight to Photos.
+    func quickSave() async throws {
+        guard saveState != .saving else { return }
+        saveState = .saving
+        do {
+            try await saveToPhotos()
+            saveState = .saved
+            Task {
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                if saveState == .saved { saveState = .idle }
+            }
+        } catch {
+            saveState = .idle
+            throw error
+        }
+    }
+
     var credit: String? {
         guard creditEnabled else { return nil }
         let handle = creditHandle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -271,7 +331,7 @@ final class EditorModel {
     }
 
     func exportLUT() async throws -> URL {
-        let style = style
+        let style = exportStyle
         let source = sourceStats ?? .neutral
         let settings = settings
         return try await Task.detached { try CubeExporter.write(style: style, source: source, settings: settings) }.value

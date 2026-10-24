@@ -17,7 +17,7 @@ struct DNAView: View {
                                 .frame(width: 18, height: 18)
                                 .overlay(Circle().strokeBorder(.white.opacity(0.25)))
                             Text(["Shadows", "Mids", "Highlights"][z])
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.8))
                         }
                     }
@@ -35,7 +35,7 @@ struct DNAView: View {
                 Spacer()
                 Label(sizeText, systemImage: "lock.shield")
             }
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 12, weight: .medium, design: .rounded))
             .foregroundStyle(Theme.secondaryText)
         }
     }
@@ -79,7 +79,7 @@ struct ToneCurveView: View {
                 }
                 .stroke(Theme.waveGradient, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                 Text("Tone")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.secondaryText)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(8)
@@ -124,7 +124,7 @@ struct Meter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.secondaryText)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {

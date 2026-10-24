@@ -122,29 +122,19 @@ struct HomeView: View {
 
     // MARK: Pieces
 
+    /// Opens the capture screen: live camera plus Photos picker and Blend.
     private var newStyleMenu: some View {
-        Menu {
-            Button { app.openCamera() } label: {
-                Label("Capture with Camera", systemImage: "camera.viewfinder")
-            }
-            Button { showReferencePicker = true } label: {
-                Label("From Photos", systemImage: "photo.on.rectangle.angled")
-            }
-            Divider()
-            Button { app.sheet = .blend } label: {
-                Label("Blend Styles", systemImage: "circle.hexagongrid.circle")
-            }
-            .disabled(library.styles.count < 2)
+        Button {
+            app.openCamera()
         } label: {
             Text("+ New Style")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 20)
                 .frame(height: 46)
-                .background(.ultraThinMaterial, in: Capsule())
-                .background(Theme.surfaceRaised.opacity(0.6), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.08)))
+                .echoGlass(Capsule(), interactive: true)
         }
+        .buttonStyle(PressableStyle())
         .accessibilityLabel("New Style")
     }
 
@@ -165,6 +155,9 @@ struct HomeView: View {
             }
             Button { app.sheet = .details(style) } label: {
                 Label("Style DNA", systemImage: "waveform.path.ecg")
+            }
+            Button { app.sheet = .blend } label: {
+                Label("Blend Styles", systemImage: "circle.hexagongrid.circle")
             }
             Divider()
             Button { share(style) } label: {
@@ -197,12 +190,12 @@ struct HomeView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "camera.aperture")
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 44, weight: .light, design: .rounded))
                 .foregroundStyle(Theme.waveGradient)
             Text("Steal the vibe.")
-                .font(.system(size: 24, weight: .semibold))
+                .font(.system(size: 24, weight: .semibold, design: .rounded))
             Text("Point your camera at a movie, a poster or a sunset — or pick any photo — and Echo will learn its look.")
-                .font(.system(size: 15))
+                .font(.system(size: 15, design: .rounded))
                 .foregroundStyle(Theme.secondaryText)
                 .multilineTextAlignment(.center)
             HStack(spacing: 12) {
@@ -218,7 +211,7 @@ struct HomeView: View {
 
     private var footer: some View {
         Label("Styles are analysed on your iPhone. Reference images never leave it.", systemImage: "lock.fill")
-            .font(.system(size: 12))
+            .font(.system(size: 12, design: .rounded))
             .foregroundStyle(Color.white.opacity(0.35))
             .padding(.top, 8)
     }
@@ -298,7 +291,7 @@ struct BusyOverlay: View {
             Color.black.opacity(0.45).ignoresSafeArea()
             VStack(spacing: 14) {
                 ProgressView().controlSize(.large).tint(.white)
-                Text(message).font(.system(size: 15, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                Text(message).font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(.white.opacity(0.85))
             }
             .padding(28)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))

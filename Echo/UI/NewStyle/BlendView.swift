@@ -44,7 +44,7 @@ struct BlendView: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
                                         DNASwatch(dna: part.style.dna).frame(width: 18, height: 18).clipShape(Circle())
-                                        Text(part.style.name).font(.system(size: 15, weight: .semibold))
+                                        Text(part.style.name).font(.system(size: 15, weight: .semibold, design: .rounded))
                                         Spacer()
                                         Text("\(percent(part))%")
                                             .font(.system(size: 15, weight: .semibold, design: .rounded))
@@ -59,7 +59,7 @@ struct BlendView: View {
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
 
-                    Text("Ingredients").font(.system(size: 17, weight: .semibold))
+                    Text("Ingredients").font(.system(size: 17, weight: .semibold, design: .rounded))
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 12) {
                         ForEach(library.styles) { style in
                             let selected = parts.contains { $0.style.id == style.id }
@@ -84,13 +84,13 @@ struct BlendView: View {
                                         .overlay(alignment: .topTrailing) {
                                             if selected {
                                                 Image(systemName: "checkmark.circle.fill")
-                                                    .font(.system(size: 20))
+                                                    .font(.system(size: 20, design: .rounded))
                                                     .foregroundStyle(.white, Theme.accent)
                                                     .padding(6)
                                             }
                                         }
                                     Text(style.name)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
                                         .lineLimit(1)
                                         .foregroundStyle(.white.opacity(selected ? 1 : 0.7))
                                 }
@@ -102,7 +102,7 @@ struct BlendView: View {
                     }
 
                     TextField("Blend name", text: $name)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .padding(.horizontal, 16)
                         .frame(height: 50)
                         .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

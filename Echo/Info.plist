@@ -26,6 +26,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Echo uses the camera to capture a look from the world around you and to preview it live on your own scene.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Echo records sound when you hold the shutter to film a styled video.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Echo reads photos and videos you choose so it can extract their style or apply a style to them.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

@@ -7,6 +7,8 @@ struct EditorView: View {
     @Bindable var model: EditorModel
 
     @State private var showExport = false
+    @State private var panelExpanded = true
+    @State private var exportError: String?
 
     var body: some View {
         @Bindable var app = app
@@ -58,16 +60,16 @@ struct EditorView: View {
                         .clipShape(Circle())
                         .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
                     Text(model.style.name)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(Theme.secondaryText)
                 }
                 .foregroundStyle(.white)
                 .padding(.leading, 6)
                 .padding(.trailing, 14)
                 .frame(height: 40)
-                .background(Theme.surfaceRaised, in: Capsule())
+                .echoGlass(Capsule(), interactive: true)
             }
             Spacer()
             if model.isVideo {
@@ -75,10 +77,10 @@ struct EditorView: View {
                     model.togglePlayback()
                 } label: {
                     Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(width: 40, height: 40)
-                        .background(Theme.surfaceRaised, in: Circle())
+                        .echoGlass(Circle(), interactive: true)
                 }
                 .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
             }
@@ -93,58 +95,103 @@ struct EditorView: View {
                 .fill(Color.white.opacity(0.22))
                 .frame(width: 44, height: 5)
                 .padding(.top, 8)
+                .padding(.bottom, 4)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { togglePanel() }
+                .gesture(DragGesture(minimumDistance: 8).onEnded { g in
+                    if (g.translation.height > 20) == panelExpanded { togglePanel() }
+                })
+                .accessibilityLabel(panelExpanded ? "Collapse controls" : "Expand controls")
+                .accessibilityAddTraits(.isButton)
 
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 Text("Intensity")
-                    .font(.system(size: 22, weight: .semibold))
-                    .padding(.top, 8)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .padding(.top, 6)
                 IntensitySlider(value: $model.settings.intensity)
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 12) {
-                    Chip(title: "Color", systemImage: "paintpalette.fill", isOn: model.settings.color) {
-                        model.settings.color.toggle()
-                    }
-                    Chip(title: "Light", systemImage: "sun.max", isOn: model.settings.light) {
-                        model.settings.light.toggle()
-                    }
-                    Chip(title: "Grain", systemImage: "circle.dotted", isOn: model.settings.grain) {
-                        model.settings.grain.toggle()
-                    }
-                    Chip(title: "Optics", systemImage: "camera.aperture", isOn: model.settings.optics) {
-                        model.settings.optics.toggle()
-                    }
-                    ForEach(StyleRegion.allCases) { region in
-                        Chip(
-                            title: region.title,
-                            isOn: model.region == region,
-                            tint: Theme.accentDeep,
-                            isLoading: region != .auto && model.masksLoading && model.region == region
-                        ) {
-                            withAnimation(.easeOut(duration: 0.2)) { model.region = region }
+                if panelExpanded {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 12) {
+                        Chip(title: "Color", systemImage: "paintpalette.fill", isOn: model.settings.color) {
+                            model.settings.color.toggle()
                         }
-                        .disabled(!model.isRegionAvailable(region))
-                        .opacity(model.isRegionAvailable(region) ? 1 : 0.35)
+                        Chip(title: "Light", systemImage: "sun.max", isOn: model.settings.light) {
+                            model.settings.light.toggle()
+                        }
+                        Chip(title: "Grain", systemImage: "circle.dotted", isOn: model.settings.grain) {
+                            model.settings.grain.toggle()
+                        }
+                        Chip(title: "Optics", systemImage: "camera.aperture", isOn: model.settings.optics) {
+                            model.settings.optics.toggle()
+                        }
+                        ForEach(StyleRegion.allCases) { region in
+                            Chip(
+                                title: region.title,
+                                isOn: model.region == region,
+                                tint: Theme.accentDeep,
+                                isLoading: region != .auto && model.masksLoading && model.region == region
+                            ) {
+                                withAnimation(.easeOut(duration: 0.2)) { model.region = region }
+                            }
+                            .disabled(!model.isRegionAvailable(region))
+                            .opacity(model.isRegionAvailable(region) ? 1 : 0.35)
+                        }
                     }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    blendRow
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
             .padding(.horizontal, 20)
 
-            HStack {
+            HStack(spacing: 12) {
                 Button("Cancel") { dismiss() }
                     .buttonStyle(SecondaryButtonStyle())
                 Spacer()
                 Button {
                     showExport = true
                 } label: {
-                    Text("Export").frame(minWidth: 150)
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .frame(width: 22)
                 }
-                .buttonStyle(PrimaryButtonStyle())
+                .buttonStyle(SecondaryButtonStyle())
                 .disabled(!model.isReady)
+                .accessibilityLabel("More export options")
+                Button {
+                    Task {
+                        do {
+                            try await model.quickSave()
+                        } catch {
+                            exportError = error.localizedDescription
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        switch model.saveState {
+                        case .idle:
+                            Text("Export")
+                        case .saving:
+                            ProgressView().tint(.white)
+                            Text(model.isVideo ? "\(Int(model.exportProgress * 100))%" : "Saving")
+                                .monospacedDigit()
+                        case .saved:
+                            Image(systemName: "checkmark")
+                            Text("Saved")
+                        }
+                    }
+                    .frame(minWidth: 118)
+                }
+                .buttonStyle(PrimaryButtonStyle(color: model.saveState == .saved ? Color.green.opacity(0.85) : Theme.accent))
+                .disabled(!model.isReady || model.saveState == .saving)
+                .sensoryFeedback(.success, trigger: model.saveState) { _, new in new == .saved }
+                .animation(.spring(response: 0.3), value: model.saveState)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
             .background(Color.black.opacity(0.18))
-            .padding(.top, 22)
+            .padding(.top, 18)
             .padding(.bottom, 24)
         }
         .background(
@@ -156,6 +203,66 @@ struct EditorView: View {
                 )
                 .ignoresSafeArea(edges: .bottom)
         )
+        .alert("Couldn't export", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "")
+        }
+    }
+
+    private func togglePanel() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { panelExpanded.toggle() }
+    }
+
+    /// Mix a second look into the current one.
+    private var blendRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "circle.hexagongrid.circle")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.violet)
+                Text("Blend")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                Spacer()
+                Menu {
+                    Button("None") { withAnimation { model.blendStyle = nil } }
+                    Divider()
+                    ForEach(library.styles.filter { $0.id != model.style.id }) { style in
+                        Button(style.name) { withAnimation { model.blendStyle = style } }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if let other = model.blendStyle {
+                            DNASwatch(dna: other.dna).frame(width: 18, height: 18).clipShape(Circle())
+                            Text(other.name)
+                        } else {
+                            Text("Add a look")
+                        }
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold))
+                    }
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.horizontal, 12)
+                    .frame(height: 34)
+                    .background(Theme.surfaceRaised, in: Capsule())
+                }
+            }
+            if let other = model.blendStyle {
+                HStack(spacing: 10) {
+                    Text("\(Int(((1 - model.blendAmount) * 100).rounded()))")
+                        .monospacedDigit()
+                        .frame(width: 30, alignment: .leading)
+                    Slider(value: $model.blendAmount, in: 0...1)
+                        .tint(Theme.violet)
+                        .accessibilityLabel("Blend with \(other.name)")
+                    Text("\(Int((model.blendAmount * 100).rounded()))")
+                        .monospacedDigit()
+                        .frame(width: 30, alignment: .trailing)
+                }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.secondaryText)
+            }
+        }
     }
 }
 
@@ -188,7 +295,7 @@ struct CompareView: View {
                     VStack(spacing: 12) {
                         ProgressView().tint(.white)
                         Text("Reading your shot…")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(Theme.secondaryText)
                     }
                 }
@@ -238,7 +345,7 @@ struct CompareView: View {
 
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 15, weight: .medium))
+            .font(.system(size: 15, weight: .medium, design: .rounded))
             .foregroundStyle(.white.opacity(0.9))
             .shadow(color: .black.opacity(0.6), radius: 4)
     }
@@ -253,7 +360,7 @@ struct IntensitySlider: View {
     var body: some View {
         HStack(spacing: 14) {
             Text("0")
-                .font(.system(size: 16))
+                .font(.system(size: 16, design: .rounded))
                 .foregroundStyle(Theme.secondaryText)
             GeometryReader { geo in
                 let width = geo.size.width
@@ -296,7 +403,7 @@ struct IntensitySlider: View {
             }
             .frame(height: 36)
             Text("100")
-                .font(.system(size: 16))
+                .font(.system(size: 16, design: .rounded))
                 .foregroundStyle(Theme.secondaryText)
         }
         .padding(.top, 14)

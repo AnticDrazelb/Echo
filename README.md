@@ -8,12 +8,14 @@ Echo clones the *look* of any image or video (its color grade, light, texture an
 
 | | |
 |---|---|
-| **Capture a reference** | Live camera ("hold to lock the look") or anything in Photos: images, videos, Live Photos and screenshots. Text and UI are detected and ignored. |
+| **Capture a reference** | "+ New Style" opens the live camera ("hold to lock the look") with a Photos picker for images, videos, Live Photos and screenshots. Text and UI are detected and ignored. |
 | **Style DNA** | Oklab tone distribution (17 quantiles), shadow/mid/highlight tints, per-hue saturation roll-off, film grain amount & size, halation, vignette and chromatic aberration. |
 | **Apply + refine** | Metal-backed live preview with a before/after split, a 0–100 intensity slider, toggles for Color / Light / Grain / Optics, and smart regions (Sky, Skin, Subject) built with Vision. |
 | **Video** | Live styled playback; export keeps audio and orientation. |
-| **Blend** | Mix up to three looks (for example 50/30/20) into a new style. |
-| **Export** | Save to Photos (HEIF), bake a `.cube` LUT for Final Cut, Resolve or Premiere, AirDrop a `.echostyle` file, or copy an `echo://` link. |
+| **Camera** | Shoot with any look live: tap for a photo, hold to record styled video with sound. |
+| **Home** | Style cards preview each look on your own last photo (kept privately on device), with the reference thumbnail. |
+| **Blend** | Mix a second look in from the editor, or blend up to three (for example 50/30/20) into a new style. |
+| **Export** | One tap saves to Photos (HEIF). The advanced sheet bakes a `.cube` LUT for Final Cut, Resolve or Premiere, AirDrops a `.echostyle` file, or copies an `echo://` link. |
 | **Attribution** | An optional "Style inspired by @creator" credit is burned into exports. |
 
 ## How the engine works
@@ -32,7 +34,7 @@ xcodegen generate
 open Echo.xcodeproj
 ```
 
-Requires Xcode 15+ and iOS 17+.
+Requires Xcode 15+ and iOS 17+. Building with Xcode 26 adds iOS 26 Liquid Glass; older SDKs fall back to system materials.
 
 ### CI: IPA from GitHub's Mac runners
 
@@ -63,5 +65,5 @@ Echo/
   Library/    style model, persistence, built-in looks
   UI/         Home, Editor, Camera, New Style / Blend sheets, Metal view
 EchoTests/    engine unit tests
-tools/        script that generates the app icon and sample scene
+tools/        scripts that generate the app icon and sample scene
 ```

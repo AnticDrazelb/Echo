@@ -12,8 +12,14 @@ final class CameraPipeline: NSObject, @unchecked Sendable {
     private let videoQueue = DispatchQueue(label: "echo.camera.video", qos: .userInteractive)
     private let statsQueue = DispatchQueue(label: "echo.camera.stats", qos: .utility)
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let audioOutput = AVCaptureAudioDataOutput()
     private let photoOutput = AVCapturePhotoOutput()
     private var input: AVCaptureDeviceInput?
+    private var audioInput: AVCaptureDeviceInput?
+
+    // Recording state, touched only on `videoQueue`.
+    private var recorder: StyledRecorder?
+    private var wantsRecording = false
 
     private let lock = NSLock()
     private var renderer: StyleRenderer?
@@ -39,6 +45,44 @@ final class CameraPipeline: NSObject, @unchecked Sendable {
     func stop() {
         sessionQueue.async {
             if self.session.isRunning { self.session.stopRunning() }
+        }
+    }
+
+    /// Adds the microphone (once permission is granted) so videos have sound.
+    func enableAudio(_ done: @escaping @Sendable () -> Void) {
+        sessionQueue.async {
+            defer { done() }
+            guard self.audioInput == nil,
+                  AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+                  let mic = AVCaptureDevice.default(for: .audio),
+                  let input = try? AVCaptureDeviceInput(device: mic)
+            else { return }
+            self.session.beginConfiguration()
+            if self.session.canAddInput(input) {
+                self.session.addInput(input)
+                self.audioInput = input
+            }
+            if !self.session.outputs.contains(self.audioOutput), self.session.canAddOutput(self.audioOutput) {
+                self.audioOutput.setSampleBufferDelegate(self, queue: self.videoQueue)
+                self.session.addOutput(self.audioOutput)
+            }
+            self.session.commitConfiguration()
+        }
+    }
+
+    // MARK: Video recording
+
+    func startRecording() {
+        videoQueue.async { self.wantsRecording = true }
+    }
+
+    /// Finishes the file and returns its URL (nil if nothing was recorded).
+    func stopRecording(_ completion: @escaping @Sendable (URL?) -> Void) {
+        videoQueue.async {
+            self.wantsRecording = false
+            guard let recorder = self.recorder else { return completion(nil) }
+            self.recorder = nil
+            recorder.finish(completion)
         }
     }
 
@@ -133,6 +177,10 @@ final class CameraPipeline: NSObject, @unchecked Sendable {
 
 extension CameraPipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        if output === audioOutput {
+            recorder?.appendAudio(sampleBuffer)
+            return
+        }
         guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let frame = CIImage(cvPixelBuffer: buffer)
 
@@ -146,12 +194,26 @@ extension CameraPipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
         if needsStats { statsBusy = true }
         lock.unlock()
 
-        guard let renderer else {
-            frameStore.push(frame)
-            return
+        let output: CIImage
+        if let renderer {
+            if needsStats { updateStats(from: frame, renderer: renderer) }
+            output = renderer.apply(frame, settings: settings, seed: count)
+        } else {
+            output = frame
         }
-        if needsStats { updateStats(from: frame, renderer: renderer) }
-        frameStore.push(renderer.apply(frame, settings: settings, seed: count))
+        frameStore.push(output)
+        record(output, at: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+               width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
+    }
+
+    private func record(_ image: CIImage, at time: CMTime, width: Int, height: Int) {
+        guard wantsRecording else { return }
+        if recorder == nil {
+            let audio = audioInput != nil ? audioOutput.recommendedAudioSettingsForAssetWriter(writingTo: .mov) : nil
+            recorder = StyledRecorder(width: width, height: height, audioSettings: audio, start: time)
+            if recorder == nil { wantsRecording = false }
+        }
+        recorder?.appendVideo(image, at: time)
     }
 
     /// Keeps the transfer adapted to what the camera currently sees, smoothed
@@ -183,6 +245,77 @@ extension CameraPipeline: AVCapturePhotoCaptureDelegate {
             handler(.success(image.normalizedToOrigin()))
         } else {
             handler(.failure(MediaError.unreadable))
+        }
+    }
+}
+
+/// Writes already-styled frames (plus microphone audio) to a .mov file.
+private final class StyledRecorder {
+    let url: URL
+    private let writer: AVAssetWriter
+    private let video: AVAssetWriterInput
+    private let adaptor: AVAssetWriterInputPixelBufferAdaptor
+    private let audio: AVAssetWriterInput?
+    private let start: CMTime
+
+    init?(width: Int, height: Int, audioSettings: [String: Any]?, start: CMTime) {
+        url = FileManager.default.temporaryDirectory.appendingPathComponent("Echo-\(UUID().uuidString).mov")
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return nil }
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+        ])
+        video.expectsMediaDataInRealTime = true
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+        ])
+        guard writer.canAdd(video) else { return nil }
+        writer.add(video)
+        var audio: AVAssetWriterInput?
+        if let audioSettings {
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+            input.expectsMediaDataInRealTime = true
+            if writer.canAdd(input) {
+                writer.add(input)
+                audio = input
+            }
+        }
+        guard writer.startWriting() else { return nil }
+        writer.startSession(atSourceTime: start)
+        self.writer = writer
+        self.video = video
+        self.adaptor = adaptor
+        self.audio = audio
+        self.start = start
+    }
+
+    func appendVideo(_ image: CIImage, at time: CMTime) {
+        guard writer.status == .writing, video.isReadyForMoreMediaData, let pool = adaptor.pixelBufferPool else { return }
+        var buffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+        guard let buffer else { return }
+        RenderEngine.shared.context.render(image, to: buffer, bounds: image.extent, colorSpace: RenderEngine.sRGB)
+        adaptor.append(buffer, withPresentationTime: time)
+    }
+
+    func appendAudio(_ sample: CMSampleBuffer) {
+        guard writer.status == .writing, let audio, audio.isReadyForMoreMediaData,
+              CMSampleBufferGetPresentationTimeStamp(sample) >= start
+        else { return }
+        audio.append(sample)
+    }
+
+    func finish(_ completion: @escaping @Sendable (URL?) -> Void) {
+        guard writer.status == .writing else { return completion(nil) }
+        video.markAsFinished()
+        audio?.markAsFinished()
+        let url = url
+        writer.finishWriting { [writer] in
+            completion(writer.status == .completed ? url : nil)
         }
     }
 }

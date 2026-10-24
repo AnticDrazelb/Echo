@@ -1,5 +1,6 @@
 import AVFoundation
 import Observation
+import PhotosUI
 import SwiftUI
 
 @Observable
@@ -18,6 +19,9 @@ final class CameraModel {
     var isCapturing = false
     var flash = false
     var shutterCount = 0
+    private(set) var isRecording = false
+    private(set) var recordingStarted: Date?
+    var isSavingVideo = false
 
     private let library: StyleLibrary
 
@@ -45,7 +49,15 @@ final class CameraModel {
         }
     }
 
-    func stop() { pipeline.stop() }
+    func stop() {
+        if isRecording {
+            isRecording = false
+            pipeline.stopRecording { url in
+                if let url { try? FileManager.default.removeItem(at: url) }
+            }
+        }
+        pipeline.stop()
+    }
 
     private func applyStyle() {
         if mode == .shoot, let id = selectedStyleID, let style = library.style(id: id) {
@@ -93,6 +105,7 @@ final class CameraModel {
         let image: CIImage = try await withCheckedThrowingContinuation { cont in
             pipeline.capturePhoto { cont.resume(with: $0) }
         }
+        library.usePreviewSubject(image)
         let settings = RenderSettings(intensity: intensity)
         let data = await Task.detached(priority: .userInitiated) { () -> (Data, String)? in
             let stats = StyleAnalyzer.analyze(image.fitting(longSide: 1200), options: .init(ignoreText: false))
@@ -103,6 +116,45 @@ final class CameraModel {
         }.value
         guard let data else { throw MediaError.exportFailed("Couldn't encode the photo.") }
         try await PhotoSaver.savePhoto(data: data.0, uti: data.1 == "heic" ? "public.heic" : "public.jpeg")
+    }
+
+    /// Hold the shutter: records the styled feed (with sound if allowed).
+    func startRecording() async {
+        guard mode == .shoot, !isRecording else { return }
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            _ = await AVCaptureDevice.requestAccess(for: .audio)
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            pipeline.enableAudio { cont.resume() }
+        }
+        pipeline.startRecording()
+        isRecording = true
+        recordingStarted = Date()
+        shutterCount += 1
+    }
+
+    func stopRecording() async throws {
+        guard isRecording else { return }
+        isRecording = false
+        recordingStarted = nil
+        shutterCount += 1
+        isSavingVideo = true
+        defer { isSavingVideo = false }
+        let url: URL? = await withCheckedContinuation { cont in
+            pipeline.stopRecording { cont.resume(returning: $0) }
+        }
+        guard let url else { throw MediaError.exportFailed("The clip was too short.") }
+        try await PhotoSaver.saveVideo(url: url)
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// A reference picked from Photos inside the capture screen.
+    func useReference(_ media: Media) async throws {
+        isCapturing = true
+        defer { isCapturing = false }
+        let pending = try await StyleExtraction.pending(from: media, origin: .photos)
+        pipeline.setStyle(pending.dna)
+        pendingLook = pending
     }
 
     private func flashScreen() {
@@ -121,6 +173,10 @@ struct CameraView: View {
     @State private var holdProgress: CGFloat = 0
     @State private var holdTask: Task<Void, Never>?
     @State private var toast: String?
+    @State private var showPicker = false
+    @State private var pickedItem: PhotosPickerItem?
+    @State private var shutterTask: Task<Void, Never>?
+    @State private var holdFired = false
 
     var body: some View {
         ZStack {
@@ -165,6 +221,19 @@ struct CameraView: View {
             .environment(library)
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: model.shutterCount)
+        .sensoryFeedback(.success, trigger: model.pendingLook?.id) { _, new in new != nil }
+        .photosPicker(isPresented: $showPicker, selection: $pickedItem, matching: .any(of: [.images, .videos, .screenshots, .livePhotos]), preferredItemEncoding: .current)
+        .onChange(of: pickedItem) { _, item in
+            guard let item else { return }
+            pickedItem = nil
+            Task {
+                do {
+                    try await model.useReference(try await MediaLoader.load(item))
+                } catch {
+                    toast = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func topBar(_ model: CameraModel) -> some View {
@@ -177,6 +246,7 @@ struct CameraView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 220)
+            .disabled(model.isRecording)
             Spacer()
             circleButton("arrow.triangle.2.circlepath.camera") { model.pipeline.flip() }
                 .accessibilityLabel("Switch camera")
@@ -191,36 +261,38 @@ struct CameraView: View {
             switch model.mode {
             case .look:
                 Text(model.isCapturing ? "Reading Style DNA…" : "Point at a screen, poster or scene.\nHold to lock the look.")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.6), radius: 6)
-                holdButton(model)
+                HStack {
+                    sideButton("photo.on.rectangle.angled", label: "Photos") { showPicker = true }
+                    Spacer()
+                    holdButton(model)
+                    Spacer()
+                    sideButton("circle.hexagongrid.circle", label: "Blend") { openBlend() }
+                        .disabled(library.styles.count < 2)
+                }
+                .padding(.horizontal, 36)
             case .shoot:
                 styleStrip(model)
-                HStack {
-                    Spacer()
-                    Button {
-                        Task {
-                            do {
-                                try await model.shoot()
-                                toast = "Saved to Photos"
-                            } catch {
-                                toast = error.localizedDescription
-                            }
-                        }
-                    } label: {
-                        ZStack {
-                            Circle().strokeBorder(.white, lineWidth: 4).frame(width: 80, height: 80)
-                            Circle().fill(.white).frame(width: 64, height: 64)
-                                .scaleEffect(model.isCapturing ? 0.85 : 1)
-                        }
+                if let started = model.recordingStarted {
+                    TimelineView(.periodic(from: started, by: 1)) { context in
+                        let secs = Int(context.date.timeIntervalSince(started))
+                        Label(String(format: "%d:%02d", secs / 60, secs % 60), systemImage: "record.circle")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.red.opacity(0.85), in: Capsule())
                     }
-                    .buttonStyle(PressableStyle())
-                    .disabled(model.isCapturing || model.selectedStyleID == nil)
-                    .accessibilityLabel("Take photo")
-                    Spacer()
+                } else {
+                    Text(model.isSavingVideo ? "Saving video…" : "Tap to shoot · hold for video")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
                 }
+                shutterButton(model)
             }
         }
         .padding(.bottom, 28)
@@ -232,16 +304,98 @@ struct CameraView: View {
         )
     }
 
+    private func shutterButton(_ model: CameraModel) -> some View {
+        ZStack {
+            Circle()
+                .strokeBorder(model.isRecording ? Color.red : .white, lineWidth: 4)
+                .frame(width: 80, height: 80)
+            RoundedRectangle(cornerRadius: model.isRecording ? 8 : 32, style: .continuous)
+                .fill(model.isRecording ? Color.red : .white)
+                .frame(width: model.isRecording ? 32 : 64, height: model.isRecording ? 32 : 64)
+                .scaleEffect(model.isCapturing ? 0.85 : 1)
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: model.isRecording)
+        .contentShape(Circle())
+        .opacity(model.selectedStyleID == nil || model.isSavingVideo ? 0.4 : 1)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard shutterTask == nil, !model.isCapturing, !model.isSavingVideo, model.selectedStyleID != nil else { return }
+                    // Holding past the threshold starts a video; a quick tap shoots a photo.
+                    holdFired = false
+                    shutterTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        if Task.isCancelled { return }
+                        holdFired = true
+                        await model.startRecording()
+                    }
+                }
+                .onEnded { _ in
+                    guard let task = shutterTask else { return }
+                    shutterTask = nil
+                    if holdFired {
+                        Task {
+                            await task.value // recording may still be starting
+                            do {
+                                try await model.stopRecording()
+                                toast = "Video saved to Photos"
+                            } catch {
+                                toast = error.localizedDescription
+                            }
+                        }
+                    } else {
+                        task.cancel()
+                        Task {
+                            do {
+                                try await model.shoot()
+                                toast = "Saved to Photos"
+                            } catch {
+                                toast = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+        )
+        .accessibilityLabel("Shutter")
+        .accessibilityHint("Tap to take a photo, hold to record video")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { Task { try? await model.shoot() } }
+    }
+
+    private func sideButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .echoGlass(Circle(), interactive: true)
+                Text(label)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openBlend() {
+        app.cover = nil
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            app.sheet = .blend
+        }
+    }
+
     private func holdButton(_ model: CameraModel) -> some View {
         ZStack {
-            Circle().fill(.ultraThinMaterial).frame(width: 84, height: 84)
+            Circle().fill(.clear).frame(width: 84, height: 84).echoGlass(Circle())
             Circle()
                 .trim(from: 0, to: holdProgress)
                 .stroke(Theme.waveGradient, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .frame(width: 84, height: 84)
             Image(systemName: model.isCapturing ? "sparkles" : "camera.aperture")
-                .font(.system(size: 30, weight: .medium))
+                .font(.system(size: 30, weight: .medium, design: .rounded))
                 .foregroundStyle(.white)
                 .symbolEffect(.pulse, isActive: model.isCapturing)
         }
@@ -328,10 +482,10 @@ struct CameraView: View {
 
     private var deniedView: some View {
         VStack(spacing: 14) {
-            Image(systemName: "camera.fill").font(.system(size: 36)).foregroundStyle(Theme.secondaryText)
-            Text("Camera access is off").font(.system(size: 20, weight: .semibold))
+            Image(systemName: "camera.fill").font(.system(size: 36, design: .rounded)).foregroundStyle(Theme.secondaryText)
+            Text("Camera access is off").font(.system(size: 20, weight: .semibold, design: .rounded))
             Text("Allow camera access in Settings to capture looks live.")
-                .font(.system(size: 15))
+                .font(.system(size: 15, design: .rounded))
                 .foregroundStyle(Theme.secondaryText)
                 .multilineTextAlignment(.center)
             Button("Open Settings") {
@@ -345,10 +499,10 @@ struct CameraView: View {
     private func circleButton(_ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
+                .echoGlass(Circle(), interactive: true)
         }
     }
 }

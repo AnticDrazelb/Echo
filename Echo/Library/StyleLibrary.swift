@@ -12,6 +12,9 @@ final class StyleLibrary {
     private(set) var previews: [UUID: UIImage] = [:]
     @ObservationIgnored private var references: [UUID: UIImage] = [:]
     @ObservationIgnored private var pendingPreviews: Set<UUID> = []
+    @ObservationIgnored private var previewVersions: [UUID: Int] = [:]
+    /// Bumped when the preview subject changes; observed so cards refresh.
+    private(set) var previewGeneration = 0
 
     private let folder: URL
     private var indexURL: URL { folder.appendingPathComponent("styles.json") }
@@ -34,6 +37,7 @@ final class StyleLibrary {
     func remove(_ style: Style) {
         styles.removeAll { $0.id == style.id }
         previews[style.id] = nil
+        previewVersions[style.id] = nil
         references[style.id] = nil
         try? FileManager.default.removeItem(at: referenceURL(style.id))
         save()
@@ -88,23 +92,34 @@ final class StyleLibrary {
         return image
     }
 
-    /// Card preview: the bundled sample scene rendered with the style.
+    /// Card preview: the preview subject (your last photo) in this style.
+    /// Stale previews stay on screen until their re-render lands.
     func preview(for style: Style) -> UIImage? {
-        if let image = previews[style.id] { return image }
-        guard !pendingPreviews.contains(style.id) else { return nil }
+        let cached = previews[style.id]
+        if previewVersions[style.id] == previewGeneration { return cached }
+        guard !pendingPreviews.contains(style.id) else { return cached }
         pendingPreviews.insert(style.id)
         let dna = style.dna
         let id = style.id
+        let generation = previewGeneration
         Task.detached(priority: .userInitiated) {
             let image = SampleScene.shared.render(dna)
             await MainActor.run {
                 self.pendingPreviews.remove(id)
-                if let image {
-                    withAnimation(.easeOut(duration: 0.35)) { self.previews[id] = image }
-                }
+                guard let image else { return }
+                self.previewVersions[id] = generation
+                withAnimation(.easeOut(duration: 0.35)) { self.previews[id] = image }
             }
         }
-        return nil
+        return cached
+    }
+
+    /// Re-previews every card on one of the user's own photos.
+    func usePreviewSubject(_ photo: CIImage) {
+        Task.detached(priority: .utility) {
+            guard SampleScene.shared.update(with: photo) else { return }
+            await MainActor.run { self.previewGeneration += 1 }
+        }
     }
 
     private func saveReference(_ image: UIImage, for id: UUID) {
@@ -141,24 +156,74 @@ final class StyleLibrary {
     }
 }
 
-/// Bundled scene used for style card previews.
+/// The photo style cards are previewed on: the last photo you styled or shot,
+/// kept privately on device, or the bundled sample scene until then.
 final class SampleScene: @unchecked Sendable {
     static let shared = SampleScene()
 
-    let image: CIImage
-    let stats: StyleDNA
+    private let lock = NSLock()
+    private var image: CIImage
+    private var stats: StyleDNA
+    private(set) var isPersonal = false
+
+    private static var subjectURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Styles", isDirectory: true)
+            .appendingPathComponent("preview-subject.jpg")
+    }
 
     private init() {
-        if let url = Bundle.main.url(forResource: "SampleScene", withExtension: "jpg"),
-           let ci = CIImage(contentsOf: url) {
-            image = ci.fitting(longSide: 640).normalizedToOrigin()
-        } else {
-            image = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(x: 0, y: 0, width: 480, height: 640))
+        var loaded: CIImage?
+        if let ci = CIImage(contentsOf: Self.subjectURL) {
+            loaded = ci
+            isPersonal = true
+        } else if let url = Bundle.main.url(forResource: "SampleScene", withExtension: "jpg") {
+            loaded = CIImage(contentsOf: url)
         }
+        let base = (loaded ?? CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5))
+            .cropped(to: CGRect(x: 0, y: 0, width: 480, height: 640)))
+        image = Self.cardCrop(base)
         stats = StyleAnalyzer.analyze(image, options: .init(ignoreText: false))
     }
 
+    /// Center-crops to the card's portrait aspect and downsizes.
+    private static func cardCrop(_ source: CIImage) -> CIImage {
+        let img = source.normalizedToOrigin()
+        let ext = img.extent
+        let aspect: CGFloat = 0.78
+        var rect = ext
+        if ext.width / ext.height > aspect {
+            rect.size.width = ext.height * aspect
+            rect.origin.x = (ext.width - rect.width) / 2
+        } else {
+            rect.size.height = ext.width / aspect
+            rect.origin.y = (ext.height - rect.height) / 2
+        }
+        return img.cropped(to: rect).normalizedToOrigin().fitting(longSide: 640)
+    }
+
+    /// Makes `photo` the preview subject. Returns false if rendering failed.
+    @discardableResult
+    func update(with photo: CIImage) -> Bool {
+        let cropped = Self.cardCrop(photo)
+        guard let cg = RenderEngine.shared.cgImage(cropped) else { return false }
+        let baked = CIImage(cgImage: cg)
+        let newStats = StyleAnalyzer.analyze(baked, options: .init(ignoreText: false))
+        if let data = UIImage(cgImage: cg).jpegData(compressionQuality: 0.85) {
+            try? data.write(to: Self.subjectURL, options: [.atomic, .completeFileProtection])
+        }
+        lock.lock()
+        image = baked
+        stats = newStats
+        isPersonal = true
+        lock.unlock()
+        return true
+    }
+
     func render(_ dna: StyleDNA, settings: RenderSettings = RenderSettings(intensity: 1)) -> UIImage? {
+        lock.lock()
+        let image = image, stats = stats
+        lock.unlock()
         let renderer = StyleRenderer(reference: dna, source: stats)
         return RenderEngine.shared.uiImage(renderer.apply(image, settings: settings))
     }

@@ -6,22 +6,20 @@ struct ExportSheet: View {
     @Bindable var model: EditorModel
 
     @State private var shareItem: ShareItem?
-    @State private var status: Status = .idle
     @State private var errorText: String?
 
-    enum Status: Equatable { case idle, working, saved }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Export")
-                    .font(.system(size: 24, weight: .bold))
+                Text("Share & Export")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                 Spacer()
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.7))
                         .frame(width: 32, height: 32)
                         .background(Theme.surfaceRaised, in: Circle())
@@ -29,28 +27,17 @@ struct ExportSheet: View {
                 .accessibilityLabel("Close")
             }
 
-            Button {
-                Task { await save() }
-            } label: {
-                HStack(spacing: 10) {
-                    switch status {
-                    case .idle:
-                        Image(systemName: "square.and.arrow.down")
-                        Text(model.isVideo ? "Save Video to Photos" : "Save to Photos")
-                    case .working:
-                        ProgressView().tint(.white)
-                        Text(model.isVideo ? "Rendering \(Int(model.exportProgress * 100))%" : "Rendering…")
-                            .monospacedDigit()
-                    case .saved:
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Saved")
-                    }
+            if model.blendStyle != nil {
+                Button {
+                    let saved = model.saveBlendAsStyle()
+                    app.toast = "“\(saved.name)” added to your styles"
+                    dismiss()
+                } label: {
+                    Label("Save Blend as New Style", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(PrimaryButtonStyle(color: Theme.violet))
             }
-            .buttonStyle(PrimaryButtonStyle(color: status == .saved ? Color.green.opacity(0.85) : Theme.accent))
-            .disabled(status == .working)
-            .sensoryFeedback(.success, trigger: status == .saved)
 
             VStack(spacing: 0) {
                 row(icon: "cube.transparent", title: "Export .cube LUT", subtitle: "For Final Cut, DaVinci Resolve & Premiere") {
@@ -60,11 +47,11 @@ struct ExportSheet: View {
                 }
                 Divider().overlay(Theme.stroke).padding(.leading, 56)
                 row(icon: "dot.radiowaves.left.and.right", title: "Share Style", subtitle: "AirDrop the look — the photo stays with you") {
-                    if let url = try? SharedStyle(model.style).writeFile() { shareItem = ShareItem(items: [url]) }
+                    if let url = try? SharedStyle(model.exportStyle).writeFile() { shareItem = ShareItem(items: [url]) }
                 }
                 Divider().overlay(Theme.stroke).padding(.leading, 56)
                 row(icon: "link", title: "Copy Echo Link", subtitle: "Anyone with Echo can install it in one tap") {
-                    if let url = try? SharedStyle(model.style).link() {
+                    if let url = try? SharedStyle(model.exportStyle).link() {
                         UIPasteboard.general.url = url
                         app.toast = "Echo Link copied"
                         dismiss()
@@ -76,9 +63,9 @@ struct ExportSheet: View {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle(isOn: $model.creditEnabled.animation()) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Attribution").font(.system(size: 16, weight: .semibold))
+                        Text("Attribution").font(.system(size: 16, weight: .semibold, design: .rounded))
                         Text("Adds “Style inspired by @creator” to the export")
-                            .font(.system(size: 13))
+                            .font(.system(size: 13, design: .rounded))
                             .foregroundStyle(Theme.secondaryText)
                     }
                 }
@@ -96,7 +83,7 @@ struct ExportSheet: View {
 
             if let errorText {
                 Text(errorText)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, design: .rounded))
                     .foregroundStyle(.red.opacity(0.9))
             }
             Spacer(minLength: 0)
@@ -111,16 +98,16 @@ struct ExportSheet: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                    Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.secondaryText)
+                    Text(title).font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                    Text(subtitle).font(.system(size: 13, design: .rounded)).foregroundStyle(Theme.secondaryText)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.3))
             }
             .padding(.horizontal, 16)
@@ -128,20 +115,5 @@ struct ExportSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func save() async {
-        status = .working
-        errorText = nil
-        do {
-            try await model.saveToPhotos()
-            withAnimation(.spring) { status = .saved }
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            app.toast = "Saved to Photos"
-            dismiss()
-        } catch {
-            status = .idle
-            errorText = error.localizedDescription
-        }
     }
 }
