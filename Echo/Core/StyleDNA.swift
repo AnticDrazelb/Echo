@@ -38,6 +38,17 @@ struct StyleDNA: Codable, Hashable {
     var vignette: Float
     var halation: Float
     var aberration: Float
+    /// Oklab lightness where halation starts to glow.
+    var halationThreshold: Float? = nil
+    /// 0 = vignette only in the corners, 1 = long, soft falloff.
+    var vignetteFalloff: Float? = nil
+
+    // MARK: Lighting (for depth relighting)
+    /// Direction light comes from, in image space (x right, y up), and how
+    /// directional it is (0 = flat/diffuse, 1 = hard single source).
+    var lightX: Float? = nil
+    var lightY: Float? = nil
+    var lightStrength: Float? = nil
 
     var contrast: Float {
         luminance[13] - luminance[3]
@@ -90,6 +101,12 @@ struct StyleDNA: Codable, Hashable {
         func mix(_ pick: (StyleDNA) -> Float) -> Float {
             parts.reduce(0) { $0 + pick($1.0) * max($1.1, 0) } / total
         }
+        func mixOptional(_ pick: (StyleDNA) -> Float?) -> Float? {
+            let present = parts.compactMap { part in pick(part.0).map { ($0, max(part.1, 0)) } }
+            let w = present.reduce(0) { $0 + $1.1 }
+            guard w > 0 else { return nil }
+            return present.reduce(0) { $0 + $1.0 * $1.1 } / w
+        }
         func mixArray(_ pick: (StyleDNA) -> [Float]) -> [Float] {
             let n = pick(first).count
             return (0..<n).map { i in parts.reduce(0) { $0 + pick($1.0)[i] * max($1.1, 0) } / total }
@@ -106,7 +123,12 @@ struct StyleDNA: Codable, Hashable {
             grainSize: mix(\.grainSize),
             vignette: mix(\.vignette),
             halation: mix(\.halation),
-            aberration: mix(\.aberration)
+            aberration: mix(\.aberration),
+            halationThreshold: mixOptional(\.halationThreshold),
+            vignetteFalloff: mixOptional(\.vignetteFalloff),
+            lightX: mixOptional(\.lightX),
+            lightY: mixOptional(\.lightY),
+            lightStrength: mixOptional(\.lightStrength)
         )
     }
 
@@ -121,7 +143,8 @@ struct StyleDNA: Codable, Hashable {
             huePopulation.count == Self.hueSectors,
         ]
         guard !shapes.contains(false) else { return false }
-        let scalars: [Float] = [chroma, grain, grainSize, vignette, halation, aberration]
+        let optionals: [Float] = [halationThreshold, vignetteFalloff, lightX, lightY, lightStrength].compactMap { $0 }
+        let scalars: [Float] = [chroma, grain, grainSize, vignette, halation, aberration] + optionals
         let arrays: [[Float]] = [scalars, luminance, zoneLuma, zoneTintA, zoneTintB, hueChroma, huePopulation]
         return arrays.allSatisfy { $0.allSatisfy { $0.isFinite } }
     }

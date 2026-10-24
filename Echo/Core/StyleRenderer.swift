@@ -81,7 +81,9 @@ final class StyleRenderer: @unchecked Sendable {
         }
 
         if settings.optics {
-            if reference.halation > 0.02 { out = halation(out, amount: reference.halation, extent: extent) }
+            if reference.halation > 0.02 {
+                out = halation(out, amount: reference.halation, threshold: reference.halationThreshold ?? 0.85, extent: extent)
+            }
             if reference.aberration > 0.02 { out = aberration(out, amount: reference.aberration, extent: extent) }
             if reference.vignette > 0.02 { out = vignette(out, amount: reference.vignette, extent: extent) }
         }
@@ -152,18 +154,20 @@ final class StyleRenderer: @unchecked Sendable {
         f.center = CGPoint(x: extent.midX, y: extent.midY)
         f.radius = Float(hypot(extent.width, extent.height) * 0.36)
         f.intensity = min(1, amount * 0.95)
-        f.falloff = 0.65
+        f.falloff = reference.vignetteFalloff ?? 0.65
         return f.outputImage ?? image
     }
 
-    private func halation(_ image: CIImage, amount: Float, extent: CGRect) -> CIImage {
+    private func halation(_ image: CIImage, amount: Float, threshold: Float, extent: CGRect) -> CIImage {
         let k: CGFloat = 3.2
+        // Oklab L is roughly the cube root of linear luminance.
+        let t = CGFloat(powf(min(max(threshold, 0.5), 0.98), 3))
         let lum = CIVector(x: 0.2126 * k, y: 0.7152 * k, z: 0.0722 * k, w: 0)
         let highlights = image
             .applyingFilter("CIColorMatrix", parameters: [
                 "inputRVector": lum, "inputGVector": lum, "inputBVector": lum,
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputBiasVector": CIVector(x: -0.62 * k, y: -0.62 * k, z: -0.62 * k, w: 1),
+                "inputBiasVector": CIVector(x: -t * k, y: -t * k, z: -t * k, w: 1),
             ])
             .applyingFilter("CIColorClamp", parameters: [
                 "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 1),

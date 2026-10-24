@@ -15,10 +15,20 @@ final class EditorModel {
 
     var settings = RenderSettings() { didSet { refresh() } }
     var region: StyleRegion = .auto { didSet { refresh() } }
+    /// When true the selected region is protected from the style instead.
+    var regionExcluded = false { didSet { refresh() } }
     var split: CGFloat = 0.5 { didSet { refresh() } }
     /// Optional second look mixed into the current one.
-    var blendStyle: Style? { didSet { scheduleRebuild() } }
-    var blendAmount: Float = 0.3 { didSet { scheduleRebuild() } }
+    /// Up to two extra looks mixed in ("50% Dune, 30% Kodak Gold, 20% Cyberpunk").
+    var blendParts: [BlendPart] = [] { didSet { scheduleRebuild() } }
+    var mainWeight: Float = 0.5 { didSet { scheduleRebuild() } }
+    static let maxBlendParts = 2
+
+    struct BlendPart: Identifiable, Equatable {
+        var style: Style
+        var weight: Float
+        var id: UUID { style.id }
+    }
     var saveState: SaveState = .idle
 
     enum SaveState: Equatable { case idle, saving, saved }
@@ -97,21 +107,40 @@ final class EditorModel {
         }
     }
 
-    /// The look actually applied: the style, or the style blended with another.
+    var isBlending: Bool { !blendParts.isEmpty }
+
+    private var totalWeight: Float {
+        max(0.0001, mainWeight + blendParts.reduce(0) { $0 + $1.weight })
+    }
+
+    /// Normalized share (0...1) for display.
+    func share(of weight: Float) -> Float { weight / totalWeight }
+
+    /// The look actually applied: the style, or the style blended with others.
     var effectiveDNA: StyleDNA {
-        guard let blendStyle else { return style.dna }
-        return StyleDNA.blend([(style.dna, 1 - blendAmount), (blendStyle.dna, blendAmount)])
+        guard isBlending else { return style.dna }
+        return StyleDNA.blend([(style.dna, mainWeight)] + blendParts.map { ($0.style.dna, $0.weight) })
     }
 
     /// What sharing and LUT export operate on.
     var exportStyle: Style {
-        guard let blendStyle else { return style }
-        var s = Style(name: "\(style.name) × \(blendStyle.name)", dna: effectiveDNA, creator: style.creator)
-        s.recipe = [
-            Style.Ingredient(name: style.name, weight: 1 - blendAmount),
-            Style.Ingredient(name: blendStyle.name, weight: blendAmount),
-        ]
+        guard isBlending else { return style }
+        let names = [style.name] + blendParts.map(\.style.name)
+        var s = Style(name: names.joined(separator: " × "), dna: effectiveDNA, creator: style.creator)
+        s.recipe = [Style.Ingredient(name: style.name, weight: share(of: mainWeight))]
+            + blendParts.map { Style.Ingredient(name: $0.style.name, weight: share(of: $0.weight)) }
         return s
+    }
+
+    func addBlend(_ other: Style) {
+        guard other.id != style.id, blendParts.count < Self.maxBlendParts,
+              !blendParts.contains(where: { $0.style.id == other.id }) else { return }
+        // Defaults read as 50 / 30 / 20.
+        blendParts.append(BlendPart(style: other, weight: blendParts.isEmpty ? 0.3 : 0.2))
+    }
+
+    func removeBlend(_ part: BlendPart) {
+        blendParts.removeAll { $0.id == part.id }
     }
 
     func saveBlendAsStyle() -> Style {
@@ -161,7 +190,7 @@ final class EditorModel {
     func switchStyle(to newStyle: Style) {
         guard newStyle.id != style.id else { return }
         style = newStyle
-        if blendStyle?.id == newStyle.id { blendStyle = nil }
+        blendParts.removeAll { $0.style.id == newStyle.id }
         creditEnabled = newStyle.creator != nil
         creditHandle = newStyle.creator ?? ""
         Task {
@@ -176,9 +205,22 @@ final class EditorModel {
         region == .auto || !isVideo
     }
 
+    /// Tap cycles: include region → exclude (protect) region → everywhere.
+    func tapRegion(_ tapped: StyleRegion) {
+        if tapped == .auto || tapped != region {
+            region = tapped
+            regionExcluded = false
+        } else if !regionExcluded {
+            regionExcluded = true
+        } else {
+            region = .auto
+            regionExcluded = false
+        }
+    }
+
     private var currentMask: CIImage? {
-        guard region != .auto else { return nil }
-        return masks?.mask(for: region)
+        guard region != .auto, let mask = masks?.mask(for: region) else { return nil }
+        return regionExcluded ? mask.applyingFilter("CIColorInvert") : mask
     }
 
     func refresh() {

@@ -126,14 +126,18 @@ struct EditorView: View {
                             model.settings.optics.toggle()
                         }
                         ForEach(StyleRegion.allCases) { region in
+                            let selected = model.region == region
+                            let excluded = selected && model.regionExcluded
                             Chip(
-                                title: region.title,
-                                isOn: model.region == region,
-                                tint: Theme.accentDeep,
-                                isLoading: region != .auto && model.masksLoading && model.region == region
+                                title: excluded ? "No \(region.title)" : region.title,
+                                systemImage: excluded ? "minus.circle" : nil,
+                                isOn: selected,
+                                tint: excluded ? Color(red: 0.75, green: 0.2, blue: 0.3) : Theme.accentDeep,
+                                isLoading: region != .auto && model.masksLoading && selected
                             ) {
-                                withAnimation(.easeOut(duration: 0.2)) { model.region = region }
+                                withAnimation(.easeOut(duration: 0.2)) { model.tapRegion(region) }
                             }
+                            .accessibilityHint(region == .auto ? "Applies everywhere" : "Tap to apply only here, tap again to protect it")
                             .disabled(!model.isRegionAvailable(region))
                             .opacity(model.isRegionAvailable(region) ? 1 : 0.35)
                         }
@@ -214,7 +218,7 @@ struct EditorView: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { panelExpanded.toggle() }
     }
 
-    /// Mix a second look into the current one.
+    /// Mix up to two more looks into the current one.
     private var blendRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -224,45 +228,58 @@ struct EditorView: View {
                 Text("Blend")
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                 Spacer()
-                Menu {
-                    Button("None") { withAnimation { model.blendStyle = nil } }
-                    Divider()
-                    ForEach(library.styles.filter { $0.id != model.style.id }) { style in
-                        Button(style.name) { withAnimation { model.blendStyle = style } }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        if let other = model.blendStyle {
-                            DNASwatch(dna: other.dna).frame(width: 18, height: 18).clipShape(Circle())
-                            Text(other.name)
-                        } else {
-                            Text("Add a look")
+                if model.blendParts.count < EditorModel.maxBlendParts {
+                    Menu {
+                        ForEach(library.styles.filter { s in
+                            s.id != model.style.id && !model.blendParts.contains { $0.style.id == s.id }
+                        }) { style in
+                            Button(style.name) { withAnimation { model.addBlend(style) } }
                         }
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold))
+                    } label: {
+                        Label(model.isBlending ? "Add another" : "Add a look", systemImage: "plus")
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.horizontal, 12)
+                            .frame(height: 34)
+                            .background(Theme.surfaceRaised, in: Capsule())
                     }
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 12)
-                    .frame(height: 34)
-                    .background(Theme.surfaceRaised, in: Capsule())
                 }
             }
-            if let other = model.blendStyle {
-                HStack(spacing: 10) {
-                    Text("\(Int(((1 - model.blendAmount) * 100).rounded()))")
-                        .monospacedDigit()
-                        .frame(width: 30, alignment: .leading)
-                    Slider(value: $model.blendAmount, in: 0...1)
-                        .tint(Theme.violet)
-                        .accessibilityLabel("Blend with \(other.name)")
-                    Text("\(Int((model.blendAmount * 100).rounded()))")
-                        .monospacedDigit()
-                        .frame(width: 30, alignment: .trailing)
+            if model.isBlending {
+                blendSlider(name: model.style.name, dna: model.style.dna, weight: $model.mainWeight, onRemove: nil)
+                ForEach($model.blendParts) { $part in
+                    blendSlider(name: part.style.name, dna: part.style.dna, weight: $part.weight) {
+                        withAnimation { model.removeBlend(part) }
+                    }
                 }
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.secondaryText)
             }
         }
+    }
+
+    private func blendSlider(name: String, dna: StyleDNA, weight: Binding<Float>, onRemove: (() -> Void)?) -> some View {
+        HStack(spacing: 10) {
+            DNASwatch(dna: dna).frame(width: 16, height: 16).clipShape(Circle())
+            Text(name)
+                .lineLimit(1)
+                .frame(width: 92, alignment: .leading)
+            Slider(value: weight, in: 0.05...1)
+                .tint(Theme.violet)
+                .accessibilityLabel("\(name) share")
+            Text("\(Int((model.share(of: weight.wrappedValue) * 100).rounded()))%")
+                .monospacedDigit()
+                .frame(width: 40, alignment: .trailing)
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(name)")
+            } else {
+                Color.clear.frame(width: 17, height: 1)
+            }
+        }
+        .font(.system(size: 13, weight: .semibold, design: .rounded))
+        .foregroundStyle(Theme.secondaryText)
     }
 }
 
@@ -357,6 +374,12 @@ struct IntensitySlider: View {
     @Binding var value: Float
     @State private var isDragging = false
 
+    /// Haptic detents at 0, 50 and 100.
+    private var detent: Int? {
+        let pct = Int((value * 100).rounded())
+        return [0, 50, 100].contains(pct) ? pct : nil
+    }
+
     var body: some View {
         HStack(spacing: 14) {
             Text("0")
@@ -394,8 +417,9 @@ struct IntensitySlider: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { g in
                             isDragging = true
-                            let v = (g.location.x - knob / 2) / max(width - knob, 1)
-                            value = Float(min(max(v, 0), 1))
+                            var v = Float(min(max((g.location.x - knob / 2) / max(width - knob, 1), 0), 1))
+                            if abs(v - 0.5) < 0.015 { v = 0.5 } // gentle magnet at 50
+                            value = v
                         }
                         .onEnded { _ in isDragging = false }
                 )
@@ -407,7 +431,7 @@ struct IntensitySlider: View {
                 .foregroundStyle(Theme.secondaryText)
         }
         .padding(.top, 14)
-        .sensoryFeedback(.selection, trigger: Int((value * 100).rounded()) / 25)
+        .sensoryFeedback(.impact(weight: .medium), trigger: detent) { _, new in new != nil }
         .accessibilityElement()
         .accessibilityLabel("Intensity")
         .accessibilityValue("\(Int((value * 100).rounded())) percent")

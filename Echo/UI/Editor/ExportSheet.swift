@@ -27,7 +27,7 @@ struct ExportSheet: View {
                 .accessibilityLabel("Close")
             }
 
-            if model.blendStyle != nil {
+            if model.isBlending {
                 Button {
                     let saved = model.saveBlendAsStyle()
                     app.toast = "“\(saved.name)” added to your styles"

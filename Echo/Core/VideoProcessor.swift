@@ -20,7 +20,11 @@ enum VideoProcessor {
         }
 
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("Echo-\(UUID().uuidString).mov")
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+        // HEVC keeps 10-bit HDR sources intact; frame rate follows the source track.
+        let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        let preset = compatible.contains(AVAssetExportPresetHEVCHighestQuality)
+            ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
+        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw MediaError.exportFailed("This video format isn't supported.")
         }
         session.outputURL = output

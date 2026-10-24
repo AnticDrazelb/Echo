@@ -65,12 +65,12 @@ struct StyleTransfer {
             out[i] = v
         }
 
-        // Limit slope (0.2x ... 3x) to protect gradients.
+        // Limit slope (max 1.5x) so gradients never posterize.
         let dx = 1 / Float(n - 1)
         var limited = out
         for i in 1..<n {
             let slope = (out[i] - out[i - 1]) / dx
-            limited[i] = limited[i - 1] + min(3, max(0.2, slope)) * dx
+            limited[i] = limited[i - 1] + min(1.5, max(0.35, slope)) * dx
         }
         // Re-anchor around the midtones so the overall brightness target holds.
         let mid = n / 2

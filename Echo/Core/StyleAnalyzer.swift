@@ -5,8 +5,10 @@ import Vision
 /// Extracts Style DNA from an image, entirely on device.
 enum StyleAnalyzer {
     /// Analysis resolution. Statistics converge long before full resolution.
-    private static let colorSide = 160
-    private static let textureSide = 384
+    /// Color statistics converge at low resolution; texture needs detail
+    /// (analysis never looks at more than 1024px on the long side).
+    private static let colorSide = 256
+    private static let textureSide = 1024
 
     struct Options {
         /// Skip text and UI chrome (useful for screenshots and posters).
@@ -74,6 +76,7 @@ enum StyleAnalyzer {
         labs.reserveCapacity(color.width * color.height)
         var centerSum: Float = 0, centerCount: Float = 0
         var edgeSum: Float = 0, edgeCount: Float = 0
+        var ringSum: Float = 0, ringCount: Float = 0
 
         for y in 0..<color.height {
             for x in 0..<color.width {
@@ -84,6 +87,7 @@ enum StyleAnalyzer {
                 let r = (dx * dx + dy * dy).squareRoot() / 0.7071
                 if r < 0.35 { centerSum += lab.x; centerCount += 1 }
                 if r > 0.88 { edgeSum += lab.x; edgeCount += 1 }
+                if r > 0.55, r < 0.75 { ringSum += lab.x; ringCount += 1 }
                 if !excluding.isEmpty, excluding.contains(where: { $0.contains(CGPoint(x: CGFloat(u), y: CGFloat(v))) }) {
                     continue
                 }
@@ -179,17 +183,63 @@ enum StyleAnalyzer {
         let brightShare = Float(sortedL.filter { $0 > 0.88 }.count) / Float(sortedL.count)
         let warmHighlights = max(0, zoneA[2] * 0.6 + zoneB[2]) * 18
         dna.halation = min(0.6, brightShare * 2.5 * min(1, warmHighlights + 0.2))
+        dna.halationThreshold = min(0.95, max(0.7, quantile(0.97) - 0.04))
 
         // Vignette: how much darker the frame edges are than the center.
         if centerCount > 0, edgeCount > 0 {
             let ratio = (edgeSum / edgeCount) / max(centerSum / centerCount, 0.05)
             dna.vignette = min(0.85, max(0, (1 - ratio) - 0.12) * 1.4)
+            // How much of the darkening already happens mid-frame: soft vs. tight.
+            let center = centerSum / centerCount, edge = edgeSum / edgeCount
+            if ringCount > 0, center - edge > 0.02 {
+                let ring = ringSum / ringCount
+                dna.vignetteFalloff = min(0.95, max(0.25, 0.25 + 0.7 * (center - ring) / (center - edge)))
+            }
         }
+
+        let light = estimateLight(color)
+        dna.lightX = light.x
+        dna.lightY = light.y
+        dna.lightStrength = light.z
 
         let (grain, size) = estimateGrain(texture)
         dna.grain = grain
         dna.grainSize = size
         return dna
+    }
+
+    /// Estimates where the key light comes from by averaging shading
+    /// gradients (bright side of every soft edge points toward the light).
+    /// Returns (x, y, strength) with y up; strength 0 means flat light.
+    static func estimateLight(_ bmp: Bitmap) -> SIMD3<Float> {
+        let w = bmp.width, h = bmp.height
+        guard w > 4, h > 4 else { return SIMD3(0, 1, 0) }
+        var lum = [Float](repeating: 0, count: w * h)
+        for y in 0..<h {
+            for x in 0..<w {
+                let c = bmp.rgb(x, y)
+                lum[y * w + x] = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z
+            }
+        }
+        var sum = SIMD2<Float>.zero
+        var magnitude: Float = 0
+        for y in 1..<(h - 1) {
+            for x in 1..<(w - 1) {
+                let gx = lum[y * w + x + 1] - lum[y * w + x - 1]
+                let gy = lum[(y - 1) * w + x] - lum[(y + 1) * w + x] // y up
+                let m = (gx * gx + gy * gy).squareRoot()
+                // Ignore hard edges (object outlines); keep gentle shading.
+                guard m > 0.004, m < 0.12 else { continue }
+                sum += SIMD2(gx, gy)
+                magnitude += m
+            }
+        }
+        guard magnitude > 0 else { return SIMD3(0, 1, 0) }
+        let len = (sum.x * sum.x + sum.y * sum.y).squareRoot()
+        guard len > 1e-5 else { return SIMD3(0, 1, 0) }
+        let dir = sum / len
+        let strength = min(1, len / magnitude * 3)
+        return SIMD3(dir.x, dir.y, strength)
     }
 
     /// Estimates film grain / sensor noise from the high-frequency residual of

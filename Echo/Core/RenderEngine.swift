@@ -37,12 +37,16 @@ final class RenderEngine {
         cgImage(image).map { UIImage(cgImage: $0) }
     }
 
-    /// High quality HEIF (falls back to JPEG) for saving to Photos.
+    /// 10-bit Display P3 HEIF (falling back to 8-bit, then JPEG) for Photos.
     func photoData(_ image: CIImage) -> (Data, String)? {
         let cs = RenderEngine.displayP3
         let opts: [CIImageRepresentationOption: Any] = [
             CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.92,
         ]
+        // 10-bit HEIF in Display P3 keeps smooth gradients after heavy grading.
+        if let heif10 = try? context.heif10Representation(of: image, colorSpace: cs, options: opts) {
+            return (heif10, "heic")
+        }
         if let heif = context.heifRepresentation(of: image, format: .RGBA8, colorSpace: cs, options: opts) {
             return (heif, "heic")
         }

@@ -228,7 +228,12 @@ struct CameraView: View {
             pickedItem = nil
             Task {
                 do {
-                    try await model.useReference(try await MediaLoader.load(item))
+                    let media = try await MediaLoader.load(item)
+                    if model.mode == .shoot, let id = model.selectedStyleID, let style = library.style(id: id) {
+                        app.openEditor(style: style, media: media)
+                    } else {
+                        try await model.useReference(media)
+                    }
                 } catch {
                     toast = error.localizedDescription
                 }
@@ -292,7 +297,15 @@ struct CameraView: View {
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.75))
                 }
-                shutterButton(model)
+                HStack {
+                    sideButton("photo.on.rectangle", label: "Edit Photo") { showPicker = true }
+                        .disabled(model.isRecording)
+                    Spacer()
+                    shutterButton(model)
+                    Spacer()
+                    Color.clear.frame(width: 52, height: 52)
+                }
+                .padding(.horizontal, 36)
             }
         }
         .padding(.bottom, 28)

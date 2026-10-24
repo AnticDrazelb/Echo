@@ -140,8 +140,8 @@ struct HomeView: View {
 
     private func card(_ style: Style) -> some View {
         Button {
-            applyTarget = style
-            showApplyPicker = true
+            // Opens the camera with this look live; Photos is one tap away there.
+            app.openCamera(with: style)
         } label: {
             StyleCard(style: style)
         }
@@ -184,7 +184,7 @@ struct HomeView: View {
                 .frame(width: 280)
                 .environment(library)
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: applyTarget?.id)
+
     }
 
     private var emptyState: some View {
