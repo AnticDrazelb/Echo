@@ -1,0 +1,10 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/
+xcuserdata/
+*.xcuserstate
+*.ipa
+Payload/
+.DS_Store
+__pycache__/
