@@ -5,15 +5,26 @@ import SwiftUI
 
 @Observable
 @MainActor
-final class CameraModel {
-    enum Mode: String, CaseIterable { case look = "Capture Look", shoot = "Shoot" }
+final class CameraModel: WatchRemote {
+    enum Mode: String, CaseIterable { case look = "Look", shoot = "Shoot", museum = "Museum" }
     enum Access { case unknown, granted, denied }
 
     let pipeline = CameraPipeline()
-    var mode: Mode = .look { didSet { applyStyle() } }
+    var mode: Mode = .look {
+        didSet {
+            if mode == .museum { startMuseum() } else { stopMuseum() }
+            applyStyle()
+            syncWatch()
+        }
+    }
+    /// Museum Mode: the recognised painting, if any.
+    private(set) var museumMatch: MuseumCatalog.Entry?
+    private(set) var museumCount = 0
+    private(set) var museumReady = false
+    @ObservationIgnored private var museumTask: Task<Void, Never>?
     var access: Access = .unknown
-    var selectedStyleID: UUID? { didSet { applyStyle() } }
-    var intensity: Float = 1 { didSet { pipeline.setIntensity(intensity) } }
+    var selectedStyleID: UUID? { didSet { applyStyle(); syncWatch() } }
+    var intensity: Float = 1 { didSet { pipeline.setIntensity(intensity); syncWatch() } }
     /// A look captured this session that hasn't been saved yet.
     var pendingLook: PendingStyle?
     var isCapturing = false
@@ -43,6 +54,8 @@ final class CameraModel {
         default: access = .denied
         }
         guard access == .granted else { return }
+        WatchBridge.shared.remote = self
+        syncWatch()
         applyStyle()
         pipeline.start { ok in
             if !ok { Task { @MainActor in self.access = .denied } }
@@ -50,6 +63,9 @@ final class CameraModel {
     }
 
     func stop() {
+        if WatchBridge.shared.remote === self { WatchBridge.shared.remote = nil }
+        WatchBridge.shared.sendState(mode: mode.rawValue, style: nil, intensity: intensity, recording: false, cameraOpen: false)
+        stopMuseum()
         if isRecording {
             isRecording = false
             pipeline.stopRecording { url in
@@ -62,9 +78,64 @@ final class CameraModel {
     private func applyStyle() {
         if mode == .shoot, let id = selectedStyleID, let style = library.style(id: id) {
             pipeline.setStyle(style.dna)
+        } else if mode == .museum, let match = museumMatch {
+            pipeline.setStyle(match.dna)
         } else {
             pipeline.setStyle(nil)
         }
+    }
+
+    // MARK: Museum Mode
+
+    private func startMuseum() {
+        museumTask?.cancel()
+        museumTask = Task { [weak self] in
+            let entries = await Task.detached(priority: .userInitiated) { MuseumCatalog.shared.load() }.value
+            guard let self else { return }
+            museumCount = entries.count
+            museumReady = true
+            var candidate: String?
+            var misses = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                guard let frame = pipeline.latestFrame() else { continue }
+                let found = await Task.detached(priority: .utility) {
+                    MuseumCatalog.shared.match(frame.normalizedToOrigin())
+                }.value
+                if Task.isCancelled { return }
+                if let found {
+                    misses = 0
+                    // Require two agreeing frames before announcing a match.
+                    if found.artwork.id == candidate, museumMatch?.artwork.id != found.artwork.id {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { museumMatch = found }
+                        applyStyle()
+                    }
+                    candidate = found.artwork.id
+                } else {
+                    misses += 1
+                    candidate = nil
+                    if misses >= 4, museumMatch != nil {
+                        withAnimation(.easeOut) { museumMatch = nil }
+                        applyStyle()
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopMuseum() {
+        museumTask?.cancel()
+        museumTask = nil
+        museumMatch = nil
+    }
+
+    /// Saves the recognised work's look. Only the bundled catalog thumbnail
+    /// is used; nothing from the camera is stored.
+    func saveMuseumLook() -> Style? {
+        guard let match = museumMatch else { return nil }
+        let style = Style(name: library.uniqueName(match.artwork.title), dna: match.dna, creator: match.artwork.artist)
+        library.add(style, reference: match.thumbnail)
+        return style
     }
 
     /// Freezes the current frame's look ("hold to lock").
@@ -80,6 +151,7 @@ final class CameraModel {
         }.value
         // Preview the captured look live right away.
         pipeline.setStyle(result.0)
+        WatchBridge.shared.sendEvent(WatchMessage.locked)
         pendingLook = PendingStyle(
             dna: result.0, reference: result.1,
             suggestedName: StyleExtraction.suggestName(for: result.0), origin: .camera
@@ -131,6 +203,7 @@ final class CameraModel {
         isRecording = true
         recordingStarted = Date()
         shutterCount += 1
+        syncWatch()
     }
 
     func stopRecording() async throws {
@@ -138,6 +211,7 @@ final class CameraModel {
         isRecording = false
         recordingStarted = nil
         shutterCount += 1
+        syncWatch()
         isSavingVideo = true
         defer { isSavingVideo = false }
         let url: URL? = await withCheckedContinuation { cont in
@@ -157,9 +231,55 @@ final class CameraModel {
         pendingLook = pending
     }
 
+    private func syncWatch() {
+        let name = mode == .museum ? museumMatch?.artwork.title
+            : (mode == .shoot ? selectedStyleID.flatMap { library.style(id: $0)?.name } : nil)
+        WatchBridge.shared.sendState(mode: mode.rawValue, style: name, intensity: intensity, recording: isRecording)
+    }
+
     private func flashScreen() {
         flash = true
         withAnimation(.easeOut(duration: 0.35)) { flash = false }
+    }
+}
+
+// MARK: - Apple Watch remote
+
+extension CameraModel {
+    func watchShutter() {
+        Task {
+            switch mode {
+            case .look:
+                await lockLook()
+            case .shoot:
+                if (try? await shoot()) != nil { WatchBridge.shared.sendEvent(WatchMessage.captured) }
+            case .museum:
+                if saveMuseumLook() != nil { WatchBridge.shared.sendEvent(WatchMessage.locked) }
+            }
+        }
+    }
+
+    func watchRecord(_ on: Bool) {
+        Task {
+            if on {
+                if mode != .shoot { mode = .shoot }
+                await startRecording()
+            } else if (try? await stopRecording()) != nil {
+                WatchBridge.shared.sendEvent(WatchMessage.captured)
+            }
+        }
+    }
+
+    func watchIntensity(_ value: Float) {
+        intensity = min(max(value, 0), 1)
+    }
+
+    func watchStep(_ delta: Int) {
+        let styles = library.styles
+        guard !styles.isEmpty else { return }
+        let current = selectedStyleID.flatMap { id in styles.firstIndex { $0.id == id } } ?? 0
+        selectedStyleID = styles[(current + delta + styles.count) % styles.count].id
+        if mode != .shoot { mode = .shoot }
     }
 }
 
@@ -222,6 +342,7 @@ struct CameraView: View {
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: model.shutterCount)
         .sensoryFeedback(.success, trigger: model.pendingLook?.id) { _, new in new != nil }
+        .sensoryFeedback(.success, trigger: model.museumMatch?.artwork.id) { _, new in new != nil }
         .photosPicker(isPresented: $showPicker, selection: $pickedItem, matching: .any(of: [.images, .videos, .screenshots, .livePhotos]), preferredItemEncoding: .current)
         .onChange(of: pickedItem) { _, item in
             guard let item else { return }
@@ -250,7 +371,7 @@ struct CameraView: View {
                 ForEach(CameraModel.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            .frame(width: 220)
+            .frame(width: 250)
             .disabled(model.isRecording)
             Spacer()
             circleButton("arrow.triangle.2.circlepath.camera") { model.pipeline.flip() }
@@ -279,6 +400,8 @@ struct CameraView: View {
                         .disabled(library.styles.count < 2)
                 }
                 .padding(.horizontal, 36)
+            case .museum:
+                museumPanel(model)
             case .shoot:
                 styleStrip(model)
                 if let started = model.recordingStarted {
@@ -373,6 +496,59 @@ struct CameraView: View {
         .accessibilityHint("Tap to take a photo, hold to record video")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { Task { try? await model.shoot() } }
+    }
+
+    @ViewBuilder
+    private func museumPanel(_ model: CameraModel) -> some View {
+        if let match = model.museumMatch {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 14) {
+                    if let thumb = match.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 58, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(match.artwork.title)
+                            .font(.system(size: 19, weight: .semibold, design: .serif))
+                        Text("\(match.artwork.artist), \(match.artwork.date)")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.85))
+                        Label("\(match.artwork.museum), \(match.artwork.city)", systemImage: "building.columns")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Button {
+                    if let saved = model.saveMuseumLook() {
+                        toast = "“\(saved.name)” added to your styles"
+                    }
+                } label: {
+                    Label("Save This Look", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+            .padding(16)
+            .echoGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .padding(.horizontal, 16)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "building.columns")
+                    .font(.system(size: 26, weight: .medium, design: .rounded))
+                Text(model.museumReady
+                     ? "Point at a painting.\nEcho recognises \(model.museumCount) masterpieces on device."
+                     : "Preparing the collection…")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(.white.opacity(0.9))
+            .shadow(color: .black.opacity(0.6), radius: 6)
+            .padding(.bottom, 20)
+        }
     }
 
     private func sideButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {

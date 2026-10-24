@@ -143,6 +143,10 @@ struct EditorView: View {
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    if !model.isVideo {
+                        relightRow
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
                     blendRow
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
@@ -167,6 +171,8 @@ struct EditorView: View {
                     Task {
                         do {
                             try await model.quickSave()
+                        } catch is CancellationError {
+                            // Cancelled from the Live Activity.
                         } catch {
                             exportError = error.localizedDescription
                         }
@@ -216,6 +222,28 @@ struct EditorView: View {
 
     private func togglePanel() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { panelExpanded.toggle() }
+    }
+
+    /// Light › Relight: uses the photo's depth to match the reference's key light.
+    private var relightRow: some View {
+        Toggle(isOn: $model.settings.relight.animation()) {
+            HStack(spacing: 10) {
+                Image(systemName: "light.max")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Relight")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    Text(model.hasDepth
+                         ? "Uses depth to match the reference's light direction"
+                         : "Needs a photo with depth (Portrait mode or LiDAR)")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+        .tint(Theme.accent)
+        .disabled(!model.hasDepth || !model.settings.light)
     }
 
     /// Mix up to two more looks into the current one.

@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.anticdrazelb
   deploymentTarget:
     iOS: "17.0"
+    watchOS: "10.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -17,6 +18,20 @@ targets:
     platform: iOS
     sources:
       - path: Echo
+      - path: Shared
+    entitlements:
+      path: Echo/Echo.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.anticdrazelb.echo
+    dependencies:
+      - target: EchoWidgets
+        embed: true
+      - target: EchoWatch
+        embed: true
+        copy:
+          destination: productsDirectory
+          subpath: $(CONTENTS_FOLDER_PATH)/Watch
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.anticdrazelb.echo
@@ -27,10 +42,51 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Echo/Info.plist
         CODE_SIGN_STYLE: Automatic
+        PROVISIONING_PROFILE_SPECIFIER: $(ECHO_PROFILE_APP)
         SWIFT_OPTIMIZATION_LEVEL: "-O"
       configs:
         Debug:
           SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+
+  EchoWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: EchoWidgets
+      - path: Shared
+    entitlements:
+      path: EchoWidgets/EchoWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.anticdrazelb.echo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anticdrazelb.echo.widgets
+        PRODUCT_NAME: EchoWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: EchoWidgets/Info.plist
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        PROVISIONING_PROFILE_SPECIFIER: $(ECHO_PROFILE_WIDGETS)
+
+  EchoWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: EchoWatch
+      - path: Shared/WatchProtocol.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anticdrazelb.echo.watchkitapp
+        PRODUCT_NAME: Echo
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: EchoWatch/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        PROVISIONING_PROFILE_SPECIFIER: $(ECHO_PROFILE_WATCH)
+
   EchoTests:
     type: bundle.unit-test
     platform: iOS
@@ -44,6 +100,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Echo.app/Echo"
         BUNDLE_LOADER: "$(TEST_HOST)"
+
 schemes:
   Echo:
     build:

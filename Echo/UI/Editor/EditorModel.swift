@@ -49,6 +49,10 @@ final class EditorModel {
     @ObservationIgnored private var renderer: StyleRenderer?
     @ObservationIgnored private var masks: RegionMasker.Masks?
     @ObservationIgnored private var rebuildTask: Task<Void, Never>?
+    @ObservationIgnored private var depthMap: CIImage?
+    @ObservationIgnored private var shading: CIImage?
+    /// The photo carries depth, so Light can relight it.
+    private(set) var hasDepth = false
 
     // Video
     @ObservationIgnored private(set) var player: AVPlayer?
@@ -73,7 +77,7 @@ final class EditorModel {
 
     private func prepare() async {
         switch media {
-        case .photo(let image):
+        case .photo(let image, let depth):
             let prepared = await Task.detached(priority: .userInitiated) { () -> (CIImage, StyleDNA) in
                 // Bake the preview to a bitmap so interaction never re-decodes the original.
                 let fitted = image.fitting(longSide: 2000)
@@ -89,6 +93,9 @@ final class EditorModel {
             refresh()
             loadMasks(for: prepared.0)
             library.usePreviewSubject(prepared.0)
+            depthMap = depth
+            hasDepth = depth != nil
+            rebuildShading()
 
         case .video(let url):
             let frames = await MediaLoader.frames(of: url, count: 4)
@@ -160,7 +167,24 @@ final class EditorModel {
         }
     }
 
+    /// Shading map for the preview, from the photo's depth and the look's light.
+    private func rebuildShading() {
+        guard let depthMap, let preview = previewImage else { shading = nil; return }
+        let light = Relighter.light(for: effectiveDNA)
+        let extent = preview.extent
+        Task {
+            let map = await Task.detached(priority: .userInitiated) {
+                Relighter.shadingMap(depth: depthMap, extent: extent, light: light)
+                    .flatMap { RenderEngine.shared.cgImage($0) }
+                    .map { CIImage(cgImage: $0) }
+            }.value
+            shading = map
+            refresh()
+        }
+    }
+
     private func rebuildRenderer() async {
+        rebuildShading()
         guard let stats = sourceStats else { return }
         let r = StyleRenderer(reference: effectiveDNA, source: stats)
         await Task.detached(priority: .userInitiated) { r.warmUp() }.value
@@ -228,7 +252,7 @@ final class EditorModel {
             frameStore.push(previewImage)
             return
         }
-        let styled = renderer.apply(base, settings: settings, mask: currentMask, seed: frameIndex)
+        let styled = renderer.apply(base, settings: settings, mask: currentMask, seed: frameIndex, shading: shading)
         let ext = base.extent
         let cut = CGRect(x: ext.minX + ext.width * split, y: ext.minY, width: ext.width * (1 - split), height: ext.height)
         frameStore.push(styled.cropped(to: cut).composited(over: base))
@@ -352,8 +376,14 @@ final class EditorModel {
                 let sy = full.extent.height / preview.extent.height
                 mask = m.transformed(by: CGAffineTransform(scaleX: sx, y: sy)).cropped(to: full.extent)
             }
+            let fullShading = shading.map {
+                $0.transformed(by: CGAffineTransform(
+                    scaleX: full.extent.width / preview.extent.width,
+                    y: full.extent.height / preview.extent.height
+                )).cropped(to: full.extent)
+            }
             let output = await Task.detached(priority: .userInitiated) { () -> (Data, String)? in
-                var out = renderer.apply(full, settings: settings, mask: mask)
+                var out = renderer.apply(full, settings: settings, mask: mask, shading: fullShading)
                 if let credit { out = Watermark.apply(credit, to: out) }
                 return RenderEngine.shared.photoData(out)
             }.value
@@ -364,11 +394,26 @@ final class EditorModel {
 
         case .video(let url):
             pause()
-            let file = try await VideoProcessor.export(url: url, renderer: renderer, settings: settings, credit: credit) { value in
-                Task { @MainActor in self.exportProgress = value }
+            let thumb = previewImage.flatMap { RenderEngine.shared.uiImage(renderer.apply($0.fitting(longSide: 200), settings: settings)) }
+            let activity = ExportActivity(styleName: exportStyle.name, kind: "Video", thumbnail: thumb)
+            do {
+                let file = try await VideoProcessor.export(url: url, renderer: renderer, settings: settings, credit: credit) { value in
+                    Task { @MainActor in
+                        self.exportProgress = value
+                        activity.update(Double(value), detail: "Rendering frames")
+                    }
+                }
+                activity.update(1, detail: "Saving to Photos")
+                try await PhotoSaver.saveVideo(url: file)
+                try? FileManager.default.removeItem(at: file)
+                activity.end("Saved to Photos")
+            } catch is CancellationError {
+                activity.end("Cancelled")
+                throw CancellationError()
+            } catch {
+                activity.end("Export failed")
+                throw error
             }
-            try await PhotoSaver.saveVideo(url: file)
-            try? FileManager.default.removeItem(at: file)
         }
     }
 

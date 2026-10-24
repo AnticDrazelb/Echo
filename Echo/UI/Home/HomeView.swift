@@ -17,6 +17,10 @@ struct HomeView: View {
     @State private var renameText = ""
     @State private var deleting: Style?
     @State private var shareFile: ShareItem?
+    @State private var batch = BatchProcessor()
+    @State private var batchTarget: Style?
+    @State private var showBatchPicker = false
+    @State private var batchItems: [PhotosPickerItem] = []
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
@@ -37,6 +41,7 @@ struct HomeView: View {
                         }
                     }
                     footer
+                        .photosPicker(isPresented: $showBatchPicker, selection: $batchItems, maxSelectionCount: 100, matching: .images, preferredItemEncoding: .current)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
@@ -51,8 +56,26 @@ struct HomeView: View {
                 BusyOverlay(message: busyMessage)
                     .transition(.opacity)
             }
+
+            if batch.isRunning {
+                VStack {
+                    Spacer()
+                    BatchOverlay(batch: batch, styleName: batchTarget?.name ?? "")
+                        .padding(.bottom, 12)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: busyMessage)
+        .animation(.spring(response: 0.4), value: batch.isRunning)
+        .onChange(of: batchItems) { _, items in
+            guard !items.isEmpty, let style = batchTarget else { return }
+            batchItems = []
+            Task {
+                let summary = await batch.run(style: style, items: items)
+                if !summary.isEmpty { app.toast = summary }
+            }
+        }
         .toast($app.toast)
         .photosPicker(isPresented: $showReferencePicker, selection: $referenceItem, matching: .any(of: [.images, .videos, .screenshots, .livePhotos]), preferredItemEncoding: .current)
         .onChange(of: applyItem) { _, item in
@@ -153,6 +176,10 @@ struct HomeView: View {
             Button { app.openCamera(with: style) } label: {
                 Label("Shoot with This Look", systemImage: "camera")
             }
+            Button { batchTarget = style; showBatchPicker = true } label: {
+                Label("Apply to Many Photos…", systemImage: "square.stack.3d.down.right")
+            }
+            .disabled(batch.isRunning)
             Button { app.sheet = .details(style) } label: {
                 Label("Style DNA", systemImage: "waveform.path.ecg")
             }
@@ -303,7 +330,7 @@ struct BusyOverlay: View {
 enum StyleExtraction {
     static func pending(from media: Media, origin: PendingStyle.Origin) async throws -> PendingStyle {
         switch media {
-        case .photo(let image):
+        case .photo(let image, _):
             let result = await Task.detached(priority: .userInitiated) { () -> (StyleDNA, UIImage?) in
                 let preview = image.fitting(longSide: 1600)
                 return (StyleAnalyzer.analyze(preview), RenderEngine.shared.uiImage(preview.fitting(longSide: 600)))

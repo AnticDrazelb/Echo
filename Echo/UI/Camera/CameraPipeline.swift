@@ -202,6 +202,7 @@ extension CameraPipeline: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptur
             output = frame
         }
         frameStore.push(output)
+        WatchBridge.shared.offerFrame(output)
         record(output, at: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
                width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
     }

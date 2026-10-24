@@ -9,6 +9,8 @@ struct RenderSettings: Equatable, Codable {
     var light = true
     var grain = true
     var optics = true
+    /// Depth relighting (part of the Light module; needs a depth map).
+    var relight = false
 }
 
 /// Builds the Core Image graph that applies a reference look to an image.
@@ -67,9 +69,16 @@ final class StyleRenderer: @unchecked Sendable {
     // MARK: - Graph
 
     /// The fully styled image, before intensity and region masks.
-    func styled(_ image: CIImage, settings: RenderSettings, seed: Int = 0) -> CIImage {
+    func styled(_ image: CIImage, settings: RenderSettings, seed: Int = 0, shading: CIImage? = nil) -> CIImage {
         let extent = image.extent
         var out = image
+
+        if settings.light, settings.relight, let shading {
+            let blend = CIFilter.softLightBlendMode()
+            blend.inputImage = shading.cropped(to: extent)
+            blend.backgroundImage = out
+            out = (blend.outputImage ?? out).cropped(to: extent)
+        }
 
         if settings.light || settings.color {
             let f = CIFilter.colorCubeWithColorSpace()
@@ -96,11 +105,11 @@ final class StyleRenderer: @unchecked Sendable {
 
     /// Styled image blended with the original by intensity and an optional
     /// region mask (white = apply).
-    func apply(_ image: CIImage, settings: RenderSettings, mask: CIImage? = nil, seed: Int = 0) -> CIImage {
+    func apply(_ image: CIImage, settings: RenderSettings, mask: CIImage? = nil, seed: Int = 0, shading: CIImage? = nil) -> CIImage {
         let extent = image.extent
         let intensity = CGFloat(min(max(settings.intensity, 0), 1))
         guard intensity > 0.001 else { return image }
-        let full = styled(image, settings: settings, seed: seed)
+        let full = styled(image, settings: settings, seed: seed, shading: shading)
 
         if let mask {
             let scaledMask = mask

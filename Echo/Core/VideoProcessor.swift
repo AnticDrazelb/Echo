@@ -39,8 +39,15 @@ enum VideoProcessor {
                 try? await Task.sleep(nanoseconds: 150_000_000)
             }
         }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            box.session.exportAsynchronously { cont.resume() }
+        // Cancellable from the Live Activity or by cancelling the task.
+        let token = ExportCancellation.register { box.session.cancelExport() }
+        defer { ExportCancellation.unregister(token) }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                box.session.exportAsynchronously { cont.resume() }
+            }
+        } onCancel: {
+            box.session.cancelExport()
         }
         timer.cancel()
         progress(1)

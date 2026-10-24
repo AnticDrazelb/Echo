@@ -1,0 +1,98 @@
+[
+ {
+  "id": "starry-night",
+  "title": "The Starry Night",
+  "artist": "Vincent van Gogh",
+  "date": "1889",
+  "museum": "Museum of Modern Art",
+  "city": "New York"
+ },
+ {
+  "id": "pearl-earring",
+  "title": "Girl with a Pearl Earring",
+  "artist": "Johannes Vermeer",
+  "date": "c. 1665",
+  "museum": "Mauritshuis",
+  "city": "The Hague"
+ },
+ {
+  "id": "great-wave",
+  "title": "The Great Wave off Kanagawa",
+  "artist": "Katsushika Hokusai",
+  "date": "c. 1831",
+  "museum": "The Metropolitan Museum of Art",
+  "city": "New York"
+ },
+ {
+  "id": "mona-lisa",
+  "title": "Mona Lisa",
+  "artist": "Leonardo da Vinci",
+  "date": "c. 1503–1519",
+  "museum": "Musée du Louvre",
+  "city": "Paris"
+ },
+ {
+  "id": "the-scream",
+  "title": "The Scream",
+  "artist": "Edvard Munch",
+  "date": "1893",
+  "museum": "National Museum",
+  "city": "Oslo"
+ },
+ {
+  "id": "night-watch",
+  "title": "The Night Watch",
+  "artist": "Rembrandt van Rijn",
+  "date": "1642",
+  "museum": "Rijksmuseum",
+  "city": "Amsterdam"
+ },
+ {
+  "id": "the-kiss",
+  "title": "The Kiss",
+  "artist": "Gustav Klimt",
+  "date": "1907–1908",
+  "museum": "Belvedere",
+  "city": "Vienna"
+ },
+ {
+  "id": "wanderer",
+  "title": "Wanderer above the Sea of Fog",
+  "artist": "Caspar David Friedrich",
+  "date": "c. 1818",
+  "museum": "Hamburger Kunsthalle",
+  "city": "Hamburg"
+ },
+ {
+  "id": "milkmaid",
+  "title": "The Milkmaid",
+  "artist": "Johannes Vermeer",
+  "date": "c. 1658",
+  "museum": "Rijksmuseum",
+  "city": "Amsterdam"
+ },
+ {
+  "id": "grande-jatte",
+  "title": "A Sunday on La Grande Jatte",
+  "artist": "Georges Seurat",
+  "date": "1884–1886",
+  "museum": "Art Institute of Chicago",
+  "city": "Chicago"
+ },
+ {
+  "id": "hay-wain",
+  "title": "The Hay Wain",
+  "artist": "John Constable",
+  "date": "1821",
+  "museum": "National Gallery",
+  "city": "London"
+ },
+ {
+  "id": "cafe-terrace",
+  "title": "Café Terrace at Night",
+  "artist": "Vincent van Gogh",
+  "date": "1888",
+  "museum": "Kröller-Müller Museum",
+  "city": "Otterlo"
+ }
+]

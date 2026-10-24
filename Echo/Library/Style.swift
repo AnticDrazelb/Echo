@@ -20,7 +20,8 @@ struct Style: Identifiable, Codable, Hashable {
 
     var creditLine: String? {
         guard let creator, !creator.isEmpty else { return nil }
-        let handle = creator.hasPrefix("@") ? creator : "@\(creator)"
+        // Handles get an @; full names (e.g. a painter) are shown as written.
+        let handle = creator.hasPrefix("@") || creator.contains(" ") ? creator : "@\(creator)"
         return "Style inspired by \(handle)"
     }
 }

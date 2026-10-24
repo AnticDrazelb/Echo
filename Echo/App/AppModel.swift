@@ -74,6 +74,17 @@ final class AppModel {
     // MARK: Links & AirDrop
 
     func handle(url: URL) {
+        // From widgets / Live Activities: echo://open[?style=<id>]
+        if url.scheme == "echo", url.host == "open" {
+            let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "style" }?.value
+                .flatMap(UUID.init(uuidString:))
+            if let id, let style = library.style(id: id) {
+                sheet = nil
+                openCamera(with: style)
+            }
+            return
+        }
         do {
             let shared = try SharedStyle.from(url: url)
             cover = nil

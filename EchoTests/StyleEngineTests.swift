@@ -87,4 +87,50 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertEqual(out.extent, image.extent)
         XCTAssertNotNil(RenderEngine.shared.cgImage(out))
     }
+
+    // MARK: Orientation & lighting
+
+    private func verticalGradient(size: CGFloat = 32) -> CIImage {
+        let g = CIFilter(name: "CILinearGradient", parameters: [
+            "inputPoint0": CIVector(x: 0, y: size), "inputColor0": CIColor(red: 1, green: 1, blue: 1),
+            "inputPoint1": CIVector(x: 0, y: 0), "inputColor1": CIColor(red: 0, green: 0, blue: 0),
+        ])!.outputImage!
+        return g.cropped(to: CGRect(x: 0, y: 0, width: size, height: size))
+    }
+
+    func testSampledBitmapIsTopDown() {
+        let bmp = StyleAnalyzer.sample(verticalGradient(), longSide: 16)
+        XCTAssertGreaterThan(bmp.rgb(8, 0).x, bmp.rgb(8, bmp.height - 1).x + 0.3)
+    }
+
+    func testLightFromAboveIsDetected() {
+        let bmp = StyleAnalyzer.sample(verticalGradient(size: 64), longSide: 64)
+        let light = StyleAnalyzer.estimateLight(bmp)
+        XCTAssertGreaterThan(light.y, 0.8)
+        XCTAssertEqual(light.x, 0, accuracy: 0.2)
+    }
+
+    func testRelightBrightensSurfacesFacingTheLight() throws {
+        // Disparity rising to the right: the surface faces left.
+        let ramp = CIFilter(name: "CILinearGradient", parameters: [
+            "inputPoint0": CIVector(x: 0, y: 0), "inputColor0": CIColor(red: 0, green: 0, blue: 0),
+            "inputPoint1": CIVector(x: 64, y: 0), "inputColor1": CIColor(red: 1, green: 1, blue: 1),
+        ])!.outputImage!.cropped(to: CGRect(x: 0, y: 0, width: 64, height: 64))
+        let extent = CGRect(x: 0, y: 0, width: 64, height: 64)
+        let fromLeft = try XCTUnwrap(Relighter.shadingMap(depth: ramp, extent: extent, light: SIMD3(-1, 0, 1)))
+        let fromRight = try XCTUnwrap(Relighter.shadingMap(depth: ramp, extent: extent, light: SIMD3(1, 0, 1)))
+        let left = StyleAnalyzer.sample(fromLeft, longSide: 8).rgb(4, 4).x
+        let right = StyleAnalyzer.sample(fromRight, longSide: 8).rgb(4, 4).x
+        XCTAssertGreaterThan(left, 0.52)
+        XCTAssertLessThan(right, 0.48)
+    }
+
+    func testOldStyleJSONStillDecodes() throws {
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(BuiltInStyles.all[0].dna)) as! [String: Any]
+        for key in ["halationThreshold", "vignetteFalloff", "lightX", "lightY", "lightStrength"] { json[key] = nil }
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let dna = try JSONDecoder().decode(StyleDNA.self, from: data)
+        XCTAssertTrue(dna.isValid)
+        XCTAssertNil(dna.lightX)
+    }
 }

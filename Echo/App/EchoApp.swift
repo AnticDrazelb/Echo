@@ -4,6 +4,10 @@ import SwiftUI
 struct EchoApp: App {
     @State private var app = AppModel()
 
+    init() {
+        WatchBridge.shared.activate()
+    }
+
     var body: some Scene {
         WindowGroup {
             HomeView()

@@ -8,7 +8,9 @@ import UniformTypeIdentifiers
 
 /// A photo or video the user picked.
 enum Media {
-    case photo(CIImage)
+    /// `depth` is the photo's disparity/depth map when it has one
+    /// (Portrait mode, LiDAR), used for relighting.
+    case photo(CIImage, depth: CIImage?)
     case video(URL)
 
     var isVideo: Bool {
@@ -58,7 +60,9 @@ enum MediaLoader {
         guard let data = try await item.loadTransferable(type: Data.self),
               let image = CIImage(data: data, options: [.applyOrientationProperty: true])
         else { throw MediaError.unreadable }
-        return .photo(image.normalizedToOrigin())
+        let depth = CIImage(data: data, options: [.auxiliaryDisparity: true, .applyOrientationProperty: true])
+            ?? CIImage(data: data, options: [.auxiliaryDepth: true, .applyOrientationProperty: true])
+        return .photo(image.normalizedToOrigin(), depth: depth?.normalizedToOrigin())
     }
 
     /// A representative still from a video (used as a style reference).

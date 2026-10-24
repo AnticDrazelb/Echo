@@ -13,6 +13,7 @@ final class StyleLibrary {
     @ObservationIgnored private var references: [UUID: UIImage] = [:]
     @ObservationIgnored private var pendingPreviews: Set<UUID> = []
     @ObservationIgnored private var previewVersions: [UUID: Int] = [:]
+    @ObservationIgnored private var widgetSyncTask: Task<Void, Never>?
     /// Bumped when the preview subject changes; observed so cards refresh.
     private(set) var previewGeneration = 0
 
@@ -109,6 +110,7 @@ final class StyleLibrary {
                 guard let image else { return }
                 self.previewVersions[id] = generation
                 withAnimation(.easeOut(duration: 0.35)) { self.previews[id] = image }
+                self.scheduleWidgetSync()
             }
         }
         return cached
@@ -146,7 +148,18 @@ final class StyleLibrary {
         }
     }
 
+    /// Coalesced publish of cards to the StandBy widget.
+    private func scheduleWidgetSync() {
+        widgetSyncTask?.cancel()
+        widgetSyncTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
+            WidgetSync.publish(styles: styles, previews: previews)
+        }
+    }
+
     private func save() {
+        scheduleWidgetSync()
         do {
             let data = try JSONEncoder().encode(styles)
             try data.write(to: indexURL, options: .atomic)
