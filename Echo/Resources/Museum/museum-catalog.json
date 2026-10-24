@@ -64,6 +64,22 @@
   "city": "Hamburg"
  },
  {
+  "id": "birth-of-venus",
+  "title": "The Birth of Venus",
+  "artist": "Sandro Botticelli",
+  "date": "c. 1484–1486",
+  "museum": "Uffizi Gallery",
+  "city": "Florence"
+ },
+ {
+  "id": "sunflowers",
+  "title": "Sunflowers",
+  "artist": "Vincent van Gogh",
+  "date": "1888",
+  "museum": "National Gallery",
+  "city": "London"
+ },
+ {
   "id": "milkmaid",
   "title": "The Milkmaid",
   "artist": "Johannes Vermeer",
@@ -94,5 +110,13 @@
   "date": "1888",
   "museum": "Kröller-Müller Museum",
   "city": "Otterlo"
+ },
+ {
+  "id": "liberty",
+  "title": "Liberty Leading the People",
+  "artist": "Eugène Delacroix",
+  "date": "1830",
+  "museum": "Musée du Louvre",
+  "city": "Paris"
  }
 ]
