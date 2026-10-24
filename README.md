@@ -17,6 +17,12 @@ Echo clones the *look* of any image or video (its color grade, light, texture an
 | **Blend** | Mix a second look in from the editor, or blend up to three (for example 50/30/20) into a new style. |
 | **Export** | One tap saves to Photos (HEIF). The advanced sheet bakes a `.cube` LUT for Final Cut, Resolve or Premiere, AirDrops a `.echostyle` file, or copies an `echo://` link. |
 | **Attribution** | An optional "Style inspired by @creator" credit is burned into exports. |
+| **Relighting** | Photos with depth (Portrait mode, LiDAR) can be re-lit to match the reference's key-light direction: Editor › Light › Relight. |
+| **Museum Mode** | Point the camera at one of the bundled public-domain masterpieces: Echo recognises it on device, applies its look and shows a plaque. Nothing from the camera is saved. |
+| **StandBy & widgets** | Rotating Style Cards on the Home Screen and in StandBy; tap to shoot with that look. |
+| **Live Activity** | Video exports and batch jobs show progress, a preview thumbnail and a Cancel button on the Lock Screen and Dynamic Island. |
+| **Batch** | Apply a look to many photos at once (long-press a style card). |
+| **Apple Watch** | Remote with a live preview from the phone, Digital Crown intensity (0–100), shutter/record, and a haptic when a look locks. |
 
 ## How the engine works
 
@@ -34,7 +40,7 @@ xcodegen generate
 open Echo.xcodeproj
 ```
 
-Requires Xcode 15+ and iOS 17+. Building with Xcode 26 adds iOS 26 Liquid Glass; older SDKs fall back to system materials.
+Requires Xcode 15+, iOS 17+ and (for the Watch app) watchOS 10+. Building with Xcode 26 adds iOS 26 Liquid Glass; older SDKs fall back to system materials.
 
 ### CI: IPA from GitHub's Mac runners
 
@@ -51,7 +57,9 @@ To get a **signed** IPA straight from CI, add these repository secrets:
 |---|---|
 | `BUILD_CERTIFICATE_BASE64` | `base64 -i dist.p12`: your Apple Distribution (or Development) certificate |
 | `P12_PASSWORD` | Password for the .p12 |
-| `BUILD_PROVISION_PROFILE_BASE64` | `base64 -i Echo.mobileprovision`: a profile for `com.anticdrazelb.echo` |
+| `BUILD_PROVISION_PROFILE_BASE64` | Profile for `com.anticdrazelb.echo` (with the `group.com.anticdrazelb.echo` App Group) |
+| `WIDGETS_PROVISION_PROFILE_BASE64` | Profile for `com.anticdrazelb.echo.widgets` (same App Group) |
+| `WATCH_PROVISION_PROFILE_BASE64` | Profile for `com.anticdrazelb.echo.watchkitapp` |
 | `KEYCHAIN_PASSWORD` | Any random string (optional) |
 
 When these secrets are set, the workflow also archives and exports `Echo.ipa`. It uses ad-hoc by default; choose `development` or `app-store` with *Run workflow*.
@@ -64,6 +72,13 @@ Echo/
   Core/       Oklab, Style DNA, analyzer, transfer, renderer, masks, media, export
   Library/    style model, persistence, built-in looks
   UI/         Home, Editor, Camera, New Style / Blend sheets, Metal view
+EchoWidgets/  StandBy / Home Screen widget and the export Live Activity
+EchoWatch/    Apple Watch remote
+Shared/       code shared by the app, widgets and watch
 EchoTests/    engine unit tests
-tools/        scripts that generate the app icon and sample scene
+tools/        scripts that generate the app icon, sample scene and Museum catalog
 ```
+
+## Museum catalog
+
+The artworks recognised by Museum Mode are public-domain paintings. Their reference images come from Wikimedia Commons and are bundled at 320px. Each work's Style DNA and Vision feature print are computed on device the first time Museum Mode opens. To change the collection, edit `tools/museum-catalog.full.json`, put the images in a folder, and run `tools/build_museum.py`.
