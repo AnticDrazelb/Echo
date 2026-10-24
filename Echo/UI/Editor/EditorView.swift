@@ -35,6 +35,7 @@ struct EditorView: View {
         }
         .toast($app.toast)
         .onDisappear { model.tearDown() }
+        .onChange(of: model.demoShowExport) { _, show in if show { showExport = true } }
     }
 
     // MARK: Top bar

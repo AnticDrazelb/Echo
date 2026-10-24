@@ -30,6 +30,8 @@ final class EditorModel {
         var id: UUID { style.id }
     }
     var saveState: SaveState = .idle
+    /// Debug screenshots: asks the view to open the export sheet.
+    var demoShowExport = false
 
     enum SaveState: Equatable { case idle, saving, saved }
 
