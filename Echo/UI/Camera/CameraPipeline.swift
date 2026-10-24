@@ -175,7 +175,7 @@ final class CameraPipeline: NSObject, @unchecked Sendable {
     }
 }
 
-extension CameraPipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension CameraPipeline: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         if output === audioOutput {
             recorder?.appendAudio(sampleBuffer)
