@@ -112,9 +112,17 @@ struct StyleDNA: Codable, Hashable {
 
     /// Ensures arrays have the expected shape (guards imported data).
     var isValid: Bool {
-        luminance.count == Self.quantileCount && zoneLuma.count == 3 && zoneTintA.count == 3 &&
-            zoneTintB.count == 3 && hueChroma.count == Self.hueSectors && huePopulation.count == Self.hueSectors &&
-            ([chroma, grain, grainSize, vignette, halation, aberration] + luminance + zoneLuma + zoneTintA + zoneTintB + hueChroma + huePopulation)
-            .allSatisfy { $0.isFinite }
+        let shapes: [Bool] = [
+            luminance.count == Self.quantileCount,
+            zoneLuma.count == 3,
+            zoneTintA.count == 3,
+            zoneTintB.count == 3,
+            hueChroma.count == Self.hueSectors,
+            huePopulation.count == Self.hueSectors,
+        ]
+        guard !shapes.contains(false) else { return false }
+        let scalars: [Float] = [chroma, grain, grainSize, vignette, halation, aberration]
+        let arrays: [[Float]] = [scalars, luminance, zoneLuma, zoneTintA, zoneTintB, hueChroma, huePopulation]
+        return arrays.allSatisfy { $0.allSatisfy { $0.isFinite } }
     }
 }
