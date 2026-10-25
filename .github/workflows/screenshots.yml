@@ -36,7 +36,7 @@ jobs:
           xcodebuild build \
             -project Echo.xcodeproj \
             -scheme Echo \
-            -configuration Debug \
+            -configuration Release \
             -destination "id=$UDID" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
@@ -45,17 +45,18 @@ jobs:
       - name: Capture screens
         run: |
           mkdir -p shots
-          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Echo.app
+          xcrun simctl install "$UDID" build/Build/Products/Release-iphonesimulator/Echo.app
           for scene in home editor editor-blend export newstyle blend dna; do
             xcrun simctl terminate "$UDID" com.anticdrazelb.echo 2>/dev/null || true
-            xcrun simctl launch "$UDID" com.anticdrazelb.echo -EchoDemo "$scene"
-            sleep 9
+            xcrun simctl launch --stdout="$PWD/shots/$scene.log" --stderr="$PWD/shots/$scene.log" "$UDID" com.anticdrazelb.echo -EchoDemo "$scene"
+            sleep 14
             xcrun simctl io "$UDID" screenshot "shots/$scene.png"
           done
           ls -lh shots
+          tail -n 20 shots/*.log || true
 
       - uses: actions/upload-artifact@v5
         with:
           name: screenshots
-          path: shots/*.png
+          path: shots/*
           if-no-files-found: error

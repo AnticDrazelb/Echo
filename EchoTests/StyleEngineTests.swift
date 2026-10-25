@@ -133,4 +133,17 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertTrue(dna.isValid)
         XCTAssertNil(dna.lightX)
     }
+
+    func testAberrationKeepsAllChannels() {
+        // Regression: aberration once zeroed red and blue (everything turned green).
+        var dna = StyleDNA.neutral
+        dna.aberration = 1
+        let image = CIImage(color: CIColor(red: 0.8, green: 0.2, blue: 0.6)).cropped(to: CGRect(x: 0, y: 0, width: 64, height: 64))
+        let renderer = StyleRenderer(reference: dna, source: .neutral)
+        let settings = RenderSettings(intensity: 1, color: false, light: false, grain: false, optics: true)
+        let c = StyleAnalyzer.sample(renderer.apply(image, settings: settings), longSide: 16).rgb(8, 8)
+        XCTAssertGreaterThan(c.x, 0.6)
+        XCTAssertLessThan(c.y, 0.4)
+        XCTAssertGreaterThan(c.z, 0.4)
+    }
 }

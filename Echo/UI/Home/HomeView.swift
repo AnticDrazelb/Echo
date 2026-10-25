@@ -88,9 +88,7 @@ struct HomeView: View {
             referenceItem = nil
             Task { await extractStyle(from: item) }
         }
-        #if DEBUG
         .task { await DemoScenes.run(app) }
-        #endif
         .fullScreenCover(item: $app.cover) { cover in
             switch cover {
             case .editor(let model):

@@ -1,23 +1,24 @@
-#if DEBUG
 import CoreImage
 import SwiftUI
 
-/// Debug-only: `-EchoDemo <scene>` opens a screen with demo content so CI can
-/// capture simulator screenshots without UI automation.
+/// `-EchoDemo <scene>` (a launch argument, so never reachable by users) opens
+/// a screen with demo content so CI can capture simulator screenshots.
 enum DemoScenes {
     static var requested: String? { UserDefaults.standard.string(forKey: "EchoDemo") }
 
     @MainActor
     static func run(_ app: AppModel) async {
         guard let scene = requested else { return }
+        NSLog("EchoDemo: scene \(scene)")
         let library = app.library
         let styles = library.styles
-        guard let first = styles.first else { return }
+        guard let first = styles.first else { print("EchoDemo: no styles"); return }
         func style(_ name: String) -> Style { styles.first { $0.name == name } ?? first }
         let sample = Bundle.main.url(forResource: "SampleScene", withExtension: "jpg").flatMap { CIImage(contentsOf: $0) }
         // Let the home grid render its card previews first.
         try? await Task.sleep(nanoseconds: 1_200_000_000)
 
+        NSLog("EchoDemo: presenting \(scene)")
         switch scene {
         case "editor", "editor-blend", "export":
             guard let sample else { return }
@@ -45,4 +46,3 @@ enum DemoScenes {
         }
     }
 }
-#endif

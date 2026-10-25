@@ -218,13 +218,16 @@ final class StyleRenderer: @unchecked Sendable {
                     .concatenating(CGAffineTransform(scaleX: s, y: s))
                     .concatenating(CGAffineTransform(translationX: extent.midX, y: extent.midY)))
         }
-        let red = scaled(channel(1, 0, 0, alpha: 0).clampedToExtent(), by: delta)
+        // Each image holds one channel (others zero, alpha 1), so a per-channel
+        // maximum recombines them exactly. (Addition with alpha 0 would drop
+        // the premultiplied red/blue.)
+        let red = scaled(channel(1, 0, 0, alpha: 1).clampedToExtent(), by: delta)
         let green = channel(0, 1, 0, alpha: 1)
-        let blue = scaled(channel(0, 0, 1, alpha: 0).clampedToExtent(), by: -delta)
-        let rg = CIFilter.additionCompositing()
+        let blue = scaled(channel(0, 0, 1, alpha: 1).clampedToExtent(), by: -delta)
+        let rg = CIFilter.maximumCompositing()
         rg.inputImage = red
         rg.backgroundImage = green
-        let rgb = CIFilter.additionCompositing()
+        let rgb = CIFilter.maximumCompositing()
         rgb.inputImage = blue
         rgb.backgroundImage = rg.outputImage
         return (rgb.outputImage ?? image).cropped(to: extent)
