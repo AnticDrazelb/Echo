@@ -55,6 +55,7 @@ struct StudioView: View {
         .alert("Couldn't export", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(exportError ?? "") }
+        .onAppear { if model.demoInspector { tab = .inspector } }
         .onDisappear { model.close() }
     }
 

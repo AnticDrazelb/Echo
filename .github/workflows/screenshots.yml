@@ -46,7 +46,7 @@ jobs:
         run: |
           mkdir -p shots
           xcrun simctl install "$UDID" build/Build/Products/Release-iphonesimulator/Echo.app
-          for scene in home editor editor-blend export newstyle blend dna; do
+          for scene in home editor editor-blend export newstyle blend dna studio studio-inspector; do
             xcrun simctl terminate "$UDID" com.anticdrazelb.echo 2>/dev/null || true
             xcrun simctl launch --stdout="$PWD/shots/$scene.log" --stderr="$PWD/shots/$scene.log" "$UDID" com.anticdrazelb.echo -EchoDemo "$scene"
             sleep 14

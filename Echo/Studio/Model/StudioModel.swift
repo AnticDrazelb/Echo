@@ -46,6 +46,8 @@ final class StudioModel {
     private(set) var canUndo = false
     private(set) var canRedo = false
 
+    /// Screenshot demos: open on the inspector tab.
+    var demoInspector = false
     var exportProgress: Double = 0
     var isExporting = false
 
