@@ -91,7 +91,12 @@ jobs:
           mkdir -p dist/Payload
           cp -R build/Build/Products/Release-iphoneos/Echo.app dist/Payload/
           echo "Bundle contents:"; ls dist/Payload/Echo.app/PlugIns dist/Payload/Echo.app/Watch 2>&1
-          (cd dist && zip -qry Echo-unsigned.ipa Payload && rm -rf Payload)
+          (cd dist && zip -qry Echo-unsigned.ipa Payload)
+          # Sideload build: free-account sideloaders rename the app's bundle ID
+          # but not the embedded Watch app's companion ID, so iOS rejects the
+          # install. This variant drops the Watch app; everything else is kept.
+          rm -rf dist/Payload/Echo.app/Watch
+          (cd dist && zip -qry Echo-sideload.ipa Payload && rm -rf Payload)
           ls -lh dist
 
       - name: Import signing certificate & profiles

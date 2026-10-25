@@ -50,7 +50,10 @@ Requires Xcode 15+, iOS 17+ and (for the Watch app) watchOS 10+. Building with X
 - **Unit tests** on the newest iPhone simulator.
 - **Build IPA**: produces `Echo-unsigned.ipa`, available as a workflow artifact. Pushing a `v*` tag also attaches it to a GitHub Release.
 
-To install the unsigned IPA, sign it on your machine with a sideloading tool such as AltStore, Sideloadly or `zsign`.
+Each build produces two unsigned IPAs:
+
+- **`Echo-sideload.ipa`**: use this with sideloading tools (AltStore, Sideloadly, SideStore, Impactor…). It has no Watch app. These tools append your team ID to the bundle ID but leave the Watch app's `WKCompanionAppBundleIdentifier` alone, so iOS refuses to install the full IPA (`InvalidCompanionAppBundleIdentifier`).
+- **`Echo-unsigned.ipa`**: the full app including the Apple Watch remote. Install it with proper signing (the signed CI build, TestFlight, or Xcode).
 
 To get a **signed** IPA straight from CI, add these repository secrets:
 
