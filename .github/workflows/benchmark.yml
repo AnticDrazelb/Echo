@@ -1,0 +1,46 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: Image-quality benchmark (real photos)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Fetch public-domain photos
+        run: python3 scripts/fetch_bench_photos.py bench/input
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Run benchmark through the real engine
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 scripts/pick_simulator.py)
+          TEST_RUNNER_ECHO_BENCH_DIR="$PWD/bench" xcodebuild test \
+            -project Echo.xcodeproj \
+            -scheme Echo \
+            -configuration Release \
+            -destination "id=$UDID" \
+            -only-testing:EchoTests/QualityBenchmarkTests \
+            ENABLE_TESTABILITY=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            | (command -v xcbeautify >/dev/null && xcbeautify || cat)
+          ls -lh bench/out
+          cat bench/out/metrics.csv
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: benchmark
+          path: bench/out/*
+          if-no-files-found: error
