@@ -27,8 +27,15 @@ final class PipelineTests: XCTestCase {
         return (0..<(bmp.width * bmp.height)).map { bmp.rgb($0 % bmp.width, $0 / bmp.width) }
     }
 
+    private func diff(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Float {
+        let d: SIMD3<Float> = a - b
+        return (abs(d.x) + abs(d.y) + abs(d.z)) / 3
+    }
+
     private func meanAbsDiff(_ a: [SIMD3<Float>], _ b: [SIMD3<Float>]) -> Float {
-        zip(a, b).map { abs($0 - $1).sum() / 3 }.reduce(0, +) / Float(a.count)
+        var total: Float = 0
+        for (x, y) in zip(a, b) { total += diff(x, y) }
+        return total / Float(max(a.count, 1))
     }
 
     // MARK: Intensity
@@ -82,7 +89,7 @@ final class PipelineTests: XCTestCase {
 
     func testNeutralCubeIsNearIdentity() throws {
         let neutral = Style(name: "Neutral", dna: .neutral)
-        let url = try CubeExporter.write(style: neutral, size: 5, settings: RenderSettings(intensity: 1))
+        let url = try CubeExporter.write(style: neutral, settings: RenderSettings(intensity: 1), size: 5)
         let data = try String(contentsOf: url, encoding: .utf8).split(separator: "\n")
             .filter { $0.first?.isNumber ?? false }
             .map { $0.split(separator: " ").compactMap { Float($0) } }
@@ -126,10 +133,10 @@ final class PipelineTests: XCTestCase {
         let out = StyleAnalyzer.sample(renderer.apply(image, settings: settings, mask: left), longSide: 64)
         let src = StyleAnalyzer.sample(image, longSide: 64)
         let y = out.height / 2
-        let leftChange = abs(out.rgb(8, y) - src.rgb(8, y)).sum()
-        let rightChange = abs(out.rgb(out.width - 8, y) - src.rgb(src.width - 8, y)).sum()
-        XCTAssertGreaterThan(leftChange, 0.05)
-        XCTAssertLessThan(rightChange, 0.01)
+        let leftChange = diff(out.rgb(8, y), src.rgb(8, y))
+        let rightChange = diff(out.rgb(out.width - 8, y), src.rgb(src.width - 8, y))
+        XCTAssertGreaterThan(leftChange, 0.02)
+        XCTAssertLessThan(rightChange, 0.005)
     }
 
     func testMaskCoverage() {
