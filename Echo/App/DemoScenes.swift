@@ -29,14 +29,20 @@ enum DemoScenes {
                 model.split = 0.35
             }
             if scene == "export" {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                for _ in 0..<40 where !model.isReady { try? await Task.sleep(nanoseconds: 250_000_000) }
+                try? await Task.sleep(nanoseconds: 800_000_000)
                 model.demoShowExport = true
             }
         case "newstyle":
             guard let url = Bundle.main.url(forResource: "museum-great-wave", withExtension: "jpg"),
                   let image = CIImage(contentsOf: url) else { return }
-            let pending = try? await StyleExtraction.pending(from: .photo(image, depth: nil), origin: .photos)
-            if let pending { app.sheet = .naming(pending) }
+            do {
+                let pending = try await StyleExtraction.pending(from: .photo(image, depth: nil), origin: .photos)
+                NSLog("EchoDemo: extracted \(pending.suggestedName)")
+                app.sheet = .naming(pending)
+            } catch {
+                NSLog("EchoDemo: extraction failed \(error)")
+            }
         case "blend":
             app.sheet = .blend
         case "dna":
