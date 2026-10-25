@@ -22,6 +22,7 @@ Echo clones the *look* of any image or video (its color grade, light, texture an
 | **StandBy & widgets** | Rotating Style Cards on the Home Screen and in StandBy; tap to shoot with that look. |
 | **Live Activity** | Video exports and batch jobs show progress, a preview thumbnail and a Cancel button on the Lock Screen and Dynamic Island. |
 | **Batch** | Apply a look to many photos at once (long-press a style card). |
+| **Echo Studio** | A layered compositor: base photo/video, adjustment, text, shape, gradient, solid and image layers; 17 blend modes; masks (shape, gradient, luma key, Vision sky/skin/subject); 33 GPU effects (Echo Look, curves, glow, light leak, blurs, glitch, RGB split, halftone, grain, camera shake…); every parameter keyframeable with easing; timeline, animation presets, undo/redo; render to H.265 video (keeping original audio) or a full-res still. |
 | **Apple Watch** | Remote with a live preview from the phone, Digital Crown intensity (0–100), shutter/record, and a haptic when a look locks. |
 
 ## How the engine works
@@ -71,6 +72,7 @@ Echo/
   App/        entry point, navigation, deep links
   Core/       Oklab, Style DNA, analyzer, transfer, renderer, masks, media, export
   Library/    style model, persistence, built-in looks
+  Studio/     layered compositor: model, effect engine, renderer, exporter, UI
   UI/         Home, Editor, Camera, New Style / Blend sheets, Metal view
 EchoWidgets/  StandBy / Home Screen widget and the export Live Activity
 EchoWatch/    Apple Watch remote
@@ -82,3 +84,7 @@ tools/        scripts that generate the app icon, sample scene and Museum catalo
 ## Museum catalog
 
 The artworks recognised by Museum Mode are public-domain paintings. Their reference images come from Wikimedia Commons and are bundled at 320px. Each work's Style DNA and Vision feature print are computed on device the first time Museum Mode opens. To change the collection, edit `tools/museum-catalog.full.json`, put the images in a folder, and run `tools/build_museum.py`.
+
+## Quality benchmark
+
+`.github/workflows/benchmark.yml` (run it manually) downloads public-domain and CC0 photos (portraits across skin tones, low light, backlit, B&W). It renders every built-in look through the real engine on the simulator, then uploads contact sheets and `metrics.csv`. The metrics are: clipping, shadow-detail retention, skin hue drift and saturation, and tonal levels. `.github/workflows/screenshots.yml` captures the app's screens in the simulator.

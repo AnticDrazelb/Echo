@@ -176,7 +176,7 @@ struct TextContent: Codable, Hashable {
     var text: String = "Echo"
     var font: TextFont = .rounded
     var weight: Double = 0.4  // UIFont.Weight raw value range -1...1
-    var size = AnimatableValue(0.12)  // fraction of canvas width
+    var size = AnimatableValue(0.09)  // fraction of canvas width
     var tracking = AnimatableValue(0)
     var color = AnimatableColor(1, 1, 1)
     var shadow = AnimatableValue(0.3)

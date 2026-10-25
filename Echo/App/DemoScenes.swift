@@ -62,7 +62,7 @@ enum DemoScenes {
             gradient.mask.feather = AnimatableValue(0.5)
             var text = TextContent()
             text.text = "GOLDEN HOUR"
-            text.size = AnimatableValue(0.11)
+            text.size = AnimatableValue(0.075)
             text.tracking = AnimatableValue(0.18)
             text.weight = 0.3
             var title = Layer(name: "Title", content: .text(text))
