@@ -40,7 +40,7 @@ struct ExportSheet: View {
             }
 
             VStack(spacing: 0) {
-                row(icon: "cube.transparent", title: "Export .cube LUT", subtitle: "For Final Cut, DaVinci Resolve & Premiere") {
+                row(icon: "cube.transparent", title: "Export Color LUT (.cube)", subtitle: "Color & tone only — grain, glow, vignette and fringing can't be stored in a LUT") {
                     Task {
                         do { shareItem = ShareItem(items: [try await model.exportLUT()]) } catch { errorText = error.localizedDescription }
                     }

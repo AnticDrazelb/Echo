@@ -199,14 +199,21 @@ final class EditorModel {
             let result = await Task.detached(priority: .utility) { () -> RegionMasker.Masks in
                 let m = RegionMasker.masks(for: image)
                 // Materialize so previews don't re-run the mask graph every frame.
+                // Empty masks (no sky / no people found) are dropped so the
+                // region shows as unavailable instead of silently doing nothing.
                 func bake(_ img: CIImage?) -> CIImage? {
-                    guard let img, let cg = RenderEngine.shared.cgImage(img) else { return nil }
+                    guard let img, RegionMasker.coverage(of: img) > 0.01,
+                          let cg = RenderEngine.shared.cgImage(img) else { return nil }
                     return CIImage(cgImage: cg)
                 }
                 return RegionMasker.Masks(sky: bake(m.sky), skin: bake(m.skin), subject: bake(m.subject))
             }.value
             masks = result
             masksLoading = false
+            if region != .auto, result.mask(for: region) == nil {
+                region = .auto
+                regionExcluded = false
+            }
             refresh()
         }
     }
@@ -228,7 +235,23 @@ final class EditorModel {
     // MARK: Rendering
 
     func isRegionAvailable(_ region: StyleRegion) -> Bool {
-        region == .auto || !isVideo
+        if region == .auto { return true }
+        if isVideo { return false }
+        // Until masks are ready, allow selection (a spinner shows on the chip).
+        guard !masksLoading, let masks else { return true }
+        return masks.mask(for: region) != nil
+    }
+
+    /// Why a region chip is disabled, for the user.
+    func unavailableReason(_ region: StyleRegion) -> String? {
+        guard !isRegionAvailable(region) else { return nil }
+        if isVideo { return "Regions work on photos" }
+        switch region {
+        case .sky: return "No sky found in this photo"
+        case .skin: return "No skin found in this photo"
+        case .subject: return "No clear subject found"
+        case .auto: return nil
+        }
     }
 
     /// Tap cycles: include region → exclude (protect) region → everywhere.

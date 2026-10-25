@@ -108,6 +108,14 @@ enum RegionMasker {
 
     // MARK: - Helpers
 
+    /// Average mask value (0...1), measured on a small render.
+    static func coverage(of mask: CIImage) -> Float {
+        let bmp = StyleAnalyzer.sample(mask, longSide: 48)
+        var total = 0
+        for i in stride(from: 0, to: bmp.pixels.count, by: 4) { total += Int(bmp.pixels[i]) }
+        return Float(total) / Float(max(bmp.pixels.count / 4, 1)) / 255
+    }
+
     private static func fit(_ mask: CIImage, to extent: CGRect) -> CIImage {
         let sx = extent.width / mask.extent.width
         let sy = extent.height / mask.extent.height

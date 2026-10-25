@@ -1,13 +1,16 @@
 import Foundation
 
-/// Writes a style as an Adobe/Resolve-compatible `.cube` 3D LUT.
+/// Writes a style's color & tone transform as an Adobe/Resolve-compatible
+/// `.cube` 3D LUT. Spatial effects (grain, optics) can't be expressed in a LUT.
 enum CubeExporter {
     static func write(style: Style, source: StyleDNA = .neutral, settings: RenderSettings = RenderSettings(), size: Int = 33) throws -> URL {
         let transfer = StyleTransfer(reference: style.dna, source: source, light: settings.light, color: settings.color)
         let strength = settings.intensity
         var text = """
         TITLE "\(style.name.replacingOccurrences(of: "\"", with: "'"))"
-        # Created with Echo — Style DNA color transform
+        # Created with Echo — Style DNA color & tone transform.
+        # A 3D LUT maps colors only: Echo's grain, halation, vignette and
+        # chromatic aberration are spatial effects and are not included.
         LUT_3D_SIZE \(size)
         DOMAIN_MIN 0.0 0.0 0.0
         DOMAIN_MAX 1.0 1.0 1.0

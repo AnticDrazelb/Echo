@@ -141,13 +141,18 @@ struct EditorView: View {
                             .accessibilityHint(region == .auto ? "Applies everywhere" : "Tap to apply only here, tap again to protect it")
                             .disabled(!model.isRegionAvailable(region))
                             .opacity(model.isRegionAvailable(region) ? 1 : 0.35)
+                            .accessibilityValue(model.unavailableReason(region) ?? "")
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    if !model.isVideo {
-                        relightRow
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    let reasons = StyleRegion.allCases.compactMap { model.unavailableReason($0) }
+                    if !reasons.isEmpty, !model.isVideo {
+                        Text(reasons.joined(separator: " · "))
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(Theme.secondaryText)
                     }
+                    relightRow
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     blendRow
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
@@ -235,7 +240,9 @@ struct EditorView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Relight")
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    Text(model.hasDepth
+                    Text(model.isVideo
+                         ? "Photos only — videos don't carry a depth map"
+                         : model.hasDepth
                          ? "Uses depth to match the reference's light direction"
                          : "Needs a photo with depth (Portrait mode or LiDAR)")
                         .font(.system(size: 12, design: .rounded))

@@ -195,7 +195,7 @@ struct HomeView: View {
                 Label("Copy Echo Link", systemImage: "link")
             }
             Button { exportLUT(style) } label: {
-                Label("Export .cube LUT", systemImage: "cube.transparent")
+                Label("Export Color LUT (.cube)", systemImage: "cube.transparent")
             }
             Divider()
             Button { renameText = style.name; renaming = style } label: {
