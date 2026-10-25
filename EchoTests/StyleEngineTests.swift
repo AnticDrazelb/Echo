@@ -146,4 +146,25 @@ final class StyleEngineTests: XCTestCase {
         XCTAssertLessThan(c.y, 0.4)
         XCTAssertGreaterThan(c.z, 0.4)
     }
+
+    func testSkinTonesSurviveStrongLooks() {
+        // A typical skin tone should keep its hue under a strongly tinted look.
+        let skin = SIMD3<Float>(0.78, 0.56, 0.45)
+        let cold = BuiltInStyles.all.first { $0.name == "Cold Slate" }!
+        let out = StyleTransfer(reference: cold.dna, source: .neutral).map(srgb: skin)
+        let a = Oklab.fromSRGB(skin), b = Oklab.fromSRGB(out)
+        var d = (atan2f(b.z, b.y) - atan2f(a.z, a.y)) * 180 / .pi
+        if d > 180 { d -= 360 }
+        if d < -180 { d += 360 }
+        XCTAssertLessThan(abs(d), 20)
+    }
+
+    func testShadowsKeepDetail() {
+        let wes = BuiltInStyles.all.first { $0.name == "Wes Red" }!
+        let curve = StyleTransfer.buildCurve(from: StyleDNA.neutral.luminance, to: wes.dna.luminance)
+        let n = curve.count
+        // Slope through the darkest 25% stays at or above the floor.
+        let slope = (curve[n / 4] - curve[n / 20]) / (Float(n / 4 - n / 20) / Float(n - 1))
+        XCTAssertGreaterThan(slope, 0.55)
+    }
 }

@@ -18,15 +18,18 @@ struct PendingStyle: Identifiable {
 @MainActor
 final class AppModel {
     let library = StyleLibrary()
+    let studio = StudioStore()
 
     enum Cover: Identifiable {
         case editor(EditorModel)
         case camera(initialStyle: UUID?)
+        case studio(StudioModel)
 
         var id: String {
             switch self {
             case .editor(let model): "editor-\(ObjectIdentifier(model).hashValue)"
             case .camera: "camera"
+            case .studio(let model): "studio-\(ObjectIdentifier(model).hashValue)"
             }
         }
     }
@@ -56,6 +59,10 @@ final class AppModel {
 
     func openEditor(style: Style, media: Media) {
         cover = .editor(EditorModel(style: style, media: media, library: library))
+    }
+
+    func openStudio(_ comp: Composition) {
+        cover = .studio(StudioModel(comp: comp, store: studio, library: library))
     }
 
     func openCamera(with style: Style? = nil) {

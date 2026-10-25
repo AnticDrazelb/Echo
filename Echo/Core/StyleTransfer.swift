@@ -70,7 +70,9 @@ struct StyleTransfer {
         var limited = out
         for i in 1..<n {
             let slope = (out[i] - out[i - 1]) / dx
-            limited[i] = limited[i - 1] + min(1.5, max(0.35, slope)) * dx
+            // Shadows keep at least 0.6x slope so dark detail never crushes.
+            let floor: Float = Float(i) < Float(n) * 0.3 ? 0.6 : 0.35
+            limited[i] = limited[i - 1] + min(1.5, max(floor, slope)) * dx
         }
         // Re-anchor around the midtones so the overall brightness target holds.
         let mid = n / 2
@@ -131,8 +133,36 @@ struct StyleTransfer {
             if scale > 1 { scale = 1 + (scale - 1) * max(0, 1 - c * 4) }
             out.y = a0 * scale + refTint.x
             out.z = b0 * scale + refTint.y
+            if !reference.isMonochrome { protectSkin(source: lab, output: &out) }
         }
         return out
+    }
+
+    /// Skin-tone protection: colors on the skin-tone band keep their hue and
+    /// change saturation by at most ±25%, so faces stay alive under strong
+    /// looks. (Monochrome looks are exempt.)
+    static let skinProtection: Float = 0.7
+
+    private func protectSkin(source lab: SIMD3<Float>, output out: inout SIMD3<Float>) {
+        let srcC = (lab.y * lab.y + lab.z * lab.z).squareRoot()
+        guard srcC > 0.015 else { return }
+        var hue = atan2f(lab.z, lab.y) * 180 / .pi
+        if hue < 0 { hue += 360 }
+        func smooth(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
+            let t = min(max((x - e0) / (e1 - e0), 0), 1)
+            return t * t * (3 - 2 * t)
+        }
+        let weight = smooth(12, 30, hue) * (1 - smooth(72, 95, hue))
+            * smooth(0.02, 0.04, srcC) * (1 - smooth(0.17, 0.23, srcC))
+            * smooth(0.22, 0.38, lab.x) * (1 - smooth(0.9, 0.97, lab.x))
+            * Self.skinProtection
+        guard weight > 0.001 else { return }
+        let outC = (out.y * out.y + out.z * out.z).squareRoot()
+        let targetC = min(max(outC, srcC * 0.75), srcC * 1.25)
+        let protectedA = lab.y / srcC * targetC
+        let protectedB = lab.z / srcC * targetC
+        out.y += (protectedA - out.y) * weight
+        out.z += (protectedB - out.z) * weight
     }
 
     func map(srgb: SIMD3<Float>) -> SIMD3<Float> {

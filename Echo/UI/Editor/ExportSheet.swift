@@ -39,6 +39,34 @@ struct ExportSheet: View {
                 .buttonStyle(PrimaryButtonStyle(color: Theme.violet))
             }
 
+            Button {
+                Task {
+                    do {
+                        let comp = try await model.makeStudioProject(in: app.studio)
+                        dismiss()
+                        app.openStudio(comp)
+                    } catch {
+                        errorText = error.localizedDescription
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "square.stack.3d.up.fill").font(.system(size: 18, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Open in Studio").font(.system(size: 16, weight: .semibold, design: .rounded))
+                        Text("Layers, masks, keyframes & 30+ effects")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(16)
+                .background(Theme.waveGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .buttonStyle(PressableStyle())
+
             VStack(spacing: 0) {
                 row(icon: "cube.transparent", title: "Export Color LUT (.cube)", subtitle: "Color & tone only — grain, glow, vignette and fringing can't be stored in a LUT") {
                     Task {

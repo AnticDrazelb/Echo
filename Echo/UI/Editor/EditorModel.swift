@@ -152,6 +152,27 @@ final class EditorModel {
         blendParts.removeAll { $0.id == part.id }
     }
 
+    /// Hands the current photo/video and look to Studio as a layered project.
+    func makeStudioProject(in store: StudioStore) async throws -> Composition {
+        var comp: Composition
+        switch media {
+        case .photo:
+            guard let full = fullImage else { throw MediaError.unreadable }
+            comp = try store.createPhotoProject(image: full, name: exportStyle.name)
+        case .video(let url):
+            comp = try await store.createVideoProject(url: url, name: exportStyle.name)
+        }
+        var effect = Effect(.look)
+        effect.dna = effectiveDNA
+        effect.styleName = exportStyle.name
+        effect.params["intensity"] = AnimatableValue(Double(settings.intensity))
+        var layer = Layer(name: exportStyle.name, content: .adjustment)
+        layer.effects = [effect]
+        comp.layers.append(layer)
+        store.save(comp)
+        return comp
+    }
+
     func saveBlendAsStyle() -> Style {
         var s = exportStyle
         s.name = library.uniqueName(s.name)

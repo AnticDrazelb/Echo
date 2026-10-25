@@ -12,7 +12,7 @@ enum BuiltInStyles {
                  grain: 0.12, grainSize: 1, vignette: 0.5, halation: 0.22, aberration: 0),
             make("Dust Film", black: 0.17, white: 0.90, gamma: 1.0, contrast: 0.5,
                  tints: [(0, 0), (0, 0), (0, 0)], chroma: 0,
-                 grain: 0.78, grainSize: 1.5, vignette: 0.42, halation: 0, aberration: 0),
+                 grain: 0.6, grainSize: 1.4, vignette: 0.42, halation: 0, aberration: 0),
             make("Cold Slate", black: 0.07, white: 0.82, gamma: 1.3, contrast: 0.5,
                  tints: [(-0.016, -0.05), (-0.018, -0.044), (-0.01, -0.03)], chroma: 0.03,
                  grain: 0.16, grainSize: 1, vignette: 0.4, halation: 0, aberration: 0.1),

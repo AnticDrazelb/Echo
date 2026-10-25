@@ -31,6 +31,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 22) {
                     EchoHeader { newStyleMenu }
+                    ProjectsRow()
                     if library.styles.isEmpty {
                         emptyState
                     } else {
@@ -97,6 +98,10 @@ struct HomeView: View {
                     .environment(library)
             case .camera(let initial):
                 CameraView(initialStyleID: initial)
+                    .environment(app)
+                    .environment(library)
+            case .studio(let model):
+                StudioView(model: model)
                     .environment(app)
                     .environment(library)
             }
